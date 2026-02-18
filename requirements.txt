@@ -1,0 +1,9 @@
+pandas
+numpy
+PyYAML
+yfinance
+finance-datareader
+requests
+pykrx
+apscheduler
+PyQt5; platform_system=="Windows"

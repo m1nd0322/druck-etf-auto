@@ -1,0 +1,94 @@
+mode:
+  dry_run: true
+  enable_kiwoom: false
+
+data:
+  lookback_years: 3
+  price_provider: auto
+  cache_csv: true
+  cache_dir: ".cache"
+
+universe:
+  kr:
+    auto_generate: true
+    include_leveraged: false
+    include_inverse: false
+    whitelist_tickers: []
+    blacklist_tickers: []
+  us:
+    auto_generate: false
+    tickers:
+      - SPY
+      - QQQ
+      - XLF
+      - XLK
+      - XBI
+      - SMH
+      - EEM
+      - EWZ
+      - HYG
+      - IEF
+      - TLT
+      - SHY
+      - UUP
+      - ^VIX
+
+macro_filter:
+  enabled: true
+  thresholds:
+    risk_on_score_min: 0.55
+    risk_off_score_max: 0.45
+  components:
+    spy_trend_weight: 0.30
+    usd_mom_weight: 0.15
+    credit_weight: 0.20
+    vix_weight: 0.20
+    rates_weight: 0.15
+
+selection:
+  top_n_risk_on: 8
+  top_n_risk_off: 4
+  score_weights:
+    momentum: 0.55
+    trend: 0.25
+    vol_penalty: 0.10
+    dd_penalty: 0.10
+  max_weight: 0.25
+
+risk_cut:
+  enabled: true
+  rules:
+    below_200sma_cut: true
+    trailing_dd_cut: -0.12
+    hard_stop_cut: -0.18
+  action:
+    cut_to_cash: true
+    cash_us: SHY
+    cash_kr: 130730.KS
+
+rebalance:
+  min_trade_weight_diff: 0.01
+  round_shares: true
+  commission_bps: 1.5
+
+schedule:
+  timezone: "Asia/Seoul"
+  report_weekly:
+    day_of_week: "sat"
+    hour: 9
+    minute: 5
+  risk_check_daily:
+    hour: 16
+    minute: 5
+
+notifier:
+  telegram:
+    enabled: false
+    bot_token_env: "TELEGRAM_BOT_TOKEN"
+    chat_id_env: "TELEGRAM_CHAT_ID"
+
+kiwoom:
+  account_no: ""
+  market_order: true
+  split_n: 3
+  slippage_limit_bps: 30

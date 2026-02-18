@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual env
+.venv/
+venv/
+ENV/
+env/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Project runtime
+output/
+.cache/
+logs/
+*.log
+
+# Secrets / keys (never commit)
+.env
+.env.*
+*.env
+config.local.yaml
+config.local.yml
+secrets/
+**/secrets/
+*.key
+*.pem
+*.pfx
+*.p12
+*.crt
+*.cer
+*.der
+*.jks
+*.keystore
+*token*
+*apikey*
+*api_key*
+*secret*
+*passwd*
+*password*
+
+# Broker / Kiwoom artifacts
+*.dat
+*.ini
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+trade_log.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data dumps
+data/
+*.csv
+*.parquet
+*.feather
