@@ -1,5 +1,7 @@
 ﻿# druck-etf-auto
 
+[![CI](https://github.com/m1nd0322/druck-etf-auto/actions/workflows/ci.yml/badge.svg)](https://github.com/m1nd0322/druck-etf-auto/actions/workflows/ci.yml)
+
 Macro regime + momentum ETF allocation engine for KR/US universes, designed as a production-minded personal quant portfolio project.
 
 ## Investment Thesis
@@ -100,3 +102,4 @@ Start in dry-run mode, verify logs/reports, then switch to live only after contr
 ## Disclaimer
 
 This repository is for research and engineering demonstration purposes only. It is not investment advice.
+
