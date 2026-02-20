@@ -99,6 +99,13 @@ Start in dry-run mode, verify logs/reports, then switch to live only after contr
 - Add portfolio analytics (CAGR, max DD, turnover, exposure by sleeve)
 - Add test coverage for scoring/risk-cut logic and config schema validation
 
+## Shared Data Integration
+
+시장 데이터는 `mcp/data/` 공유 Parquet 저장소에서 우선 로드합니다. 공유 데이터에 있는 티커는 yfinance 호출 없이 즉시 로드되며, 없는 티커만 yfinance/FDR로 fallback합니다. 부분 히트를 지원하여 1055개 KR ETF 중 공유 데이터에 있는 티커는 캐시에서 로드하고 나머지만 다운로드합니다.
+
+- 공유 데이터 저장소: [`m1nd0322/data`](https://github.com/m1nd0322/data) (private)
+- 연동 파일: `druck/data.py`
+
 ## Disclaimer
 
 This repository is for research and engineering demonstration purposes only. It is not investment advice.

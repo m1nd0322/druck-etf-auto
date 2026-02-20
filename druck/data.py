@@ -1,9 +1,18 @@
 from __future__ import annotations
 import os
+import sys
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import List, Optional, Tuple
 import pandas as pd
+
+# 공유 시장 데이터 로더
+sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), '../../data')))
+try:
+    from load_market_data import load_tickers
+    _HAS_SHARED_DATA = True
+except ImportError:
+    _HAS_SHARED_DATA = False
 
 @dataclass
 class Universe:
@@ -94,18 +103,33 @@ def fetch_prices(tickers: List[str], start: str, end: str, prefer: str='auto', c
             return pd.read_csv(cache_path, index_col=0, parse_dates=True)
         except Exception:
             pass
+    # 공유 Parquet 데이터에서 먼저 시도 (부분 히트 지원)
+    shared_df = pd.DataFrame()
+    missing_tickers = list(tickers)
+    if _HAS_SHARED_DATA:
+        try:
+            shared = load_tickers(tickers, start, end)
+            if 'Close' in shared and not shared['Close'].empty:
+                found = [t for t in tickers if t in shared['Close'].columns]
+                if found:
+                    shared_df = shared['Close'][found].sort_index().dropna(how='all')
+                    missing_tickers = [t for t in tickers if t not in found]
+        except Exception:
+            pass
+    # 공유 데이터에 없는 티커만 다운로드
     dfs=[]
-    if prefer in ('yf','auto'):
-        try: dfs.append(fetch_prices_yf(tickers,start,end))
-        except Exception: pass
-    if prefer in ('fdr','auto'):
-        try: dfs.append(fetch_prices_fdr(tickers,start,end))
-        except Exception: pass
-    if not dfs:
+    if missing_tickers:
+        if prefer in ('yf','auto'):
+            try: dfs.append(fetch_prices_yf(missing_tickers,start,end))
+            except Exception: pass
+        if prefer in ('fdr','auto'):
+            try: dfs.append(fetch_prices_fdr(missing_tickers,start,end))
+            except Exception: pass
+    if not dfs and shared_df.empty:
         raise RuntimeError('No data provider worked.')
-    df=dfs[0]
-    for d in dfs[1:]:
-        df=df.combine_first(d)
+    df = shared_df
+    for d in dfs:
+        df = df.combine_first(d) if not df.empty else d
     df=df.sort_index().dropna(how='all')
     if cache_path:
         try: df.to_csv(cache_path)
