@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% set active = "history" %}
+
+{% block title %}{{ filename }} - Druck ETF Auto{% endblock %}
+
+{% block content %}
+<div class="header-row">
+  <h1>{{ filename }}</h1>
+  <a href="/history" class="btn btn-secondary">Back</a>
+</div>
+
+{% if content %}
+<div class="report-content">
+  {{ content | replace("\n", "<br>") | safe }}
+</div>
+{% else %}
+<div class="empty-state">
+  <p>Report not found.</p>
+</div>
+{% endif %}
+{% endblock %}

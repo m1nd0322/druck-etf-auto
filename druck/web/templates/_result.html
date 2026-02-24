@@ -1,0 +1,72 @@
+{# Partial: dashboard result panel. Expects `latest` dict. #}
+<section class="section">
+  <div class="regime-banner regime-{{ latest.state|lower }}">
+    <div class="regime-state">{{ latest.state }}</div>
+    <div class="regime-score">Risk Score: {{ latest.risk_score }}</div>
+    <div class="regime-time">{{ latest.generated_at }}</div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Macro Components</h2>
+  <div class="macro-grid">
+    {% for key, val in latest.details.items() if key != 'risk_score' and key != 'vix_spike_halt' %}
+    <div class="macro-card">
+      <div class="macro-label">{{ key }}</div>
+      <div class="macro-value">
+        {% if val is not none %}
+          <div class="bar-bg">
+            <div class="bar-fill {% if val >= 0.55 %}bar-green{% elif val <= 0.45 %}bar-red{% else %}bar-yellow{% endif %}"
+                 style="width:{{ (val * 100)|round }}%"></div>
+          </div>
+          <span>{{ "%.2f"|format(val) }}</span>
+        {% else %}
+          <span class="muted">N/A</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+{% if latest.details.get('vix_spike_halt') %}
+<div class="alert alert-warning">VIX Spike detected &mdash; trading halt signal active</div>
+{% endif %}
+
+<section class="section">
+  <h2>Selected ETFs</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Ticker</th>
+          <th>Weight %</th>
+          <th>Score</th>
+          <th>Momentum</th>
+          <th>Trend</th>
+          <th class="hide-mobile">Vol</th>
+          <th class="hide-mobile">MDD</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for etf in latest.etfs %}
+        <tr>
+          <td class="ticker">{{ etf.ticker }}</td>
+          <td>
+            <div class="weight-bar" style="--w:{{ etf.weight }}%">{{ "%.1f"|format(etf.weight) }}%</div>
+          </td>
+          <td>{{ "%.4f"|format(etf.get('score', 0)) }}</td>
+          <td class="{% if etf.get('momentum', 0) >= 0 %}positive{% else %}negative{% endif %}">
+            {{ "%.2f%%"|format(etf.get('momentum', 0) * 100) }}
+          </td>
+          <td>{{ "%.2f"|format(etf.get('trend', 0)) }}</td>
+          <td class="hide-mobile">{{ "%.1f%%"|format(etf.get('vol', 0) * 100) }}</td>
+          <td class="hide-mobile {% if etf.get('mdd', 0) < -0.15 %}negative{% endif %}">
+            {{ "%.1f%%"|format(etf.get('mdd', 0) * 100) }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>

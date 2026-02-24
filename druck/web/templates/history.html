@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% set active = "history" %}
+
+{% block title %}Report History - Druck ETF Auto{% endblock %}
+
+{% block content %}
+<h1>Report History</h1>
+
+{% if reports %}
+<div class="report-list">
+  {% for r in reports %}
+  <a href="/report/{{ r.filename }}" class="report-card">
+    <span class="report-date">{{ r.label }}</span>
+    <span class="report-file">{{ r.filename }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <p>No reports generated yet.</p>
+</div>
+{% endif %}
+{% endblock %}

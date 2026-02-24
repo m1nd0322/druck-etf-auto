@@ -27,8 +27,17 @@ jobs:
 
       - name: Syntax check
         run: |
-          python -m compileall -q druck run_auto.py run_report.py
+          python -m compileall -q druck run_auto.py run_report.py run_web.py
 
       - name: Import smoke test
         run: |
-          python -c "import druck.engine, druck.scheduler, druck.portfolio, druck.macro"
+          python -c "import druck.engine, druck.scheduler, druck.portfolio, druck.macro, druck.web.app"
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t druck-etf-auto .
