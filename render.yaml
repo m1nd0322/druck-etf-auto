@@ -1,0 +1,12 @@
+services:
+  - type: web
+    plan: free
+    name: druck-etf-auto
+    runtime: python
+    buildCommand: "pip install -r requirements-docker.txt"
+    startCommand: "uvicorn druck.web.app:app --host 0.0.0.0 --port 10000"
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
