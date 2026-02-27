@@ -101,9 +101,13 @@ Start in dry-run mode, verify logs/reports, then switch to live only after contr
 
 ## Shared Data Integration
 
-시장 데이터는 `mcp/data/` 공유 Parquet 저장소에서 우선 로드합니다. 공유 데이터에 있는 티커는 yfinance 호출 없이 즉시 로드되며, 없는 티커만 yfinance/FDR로 fallback합니다. 부분 히트를 지원하여 1055개 KR ETF 중 공유 데이터에 있는 티커는 캐시에서 로드하고 나머지만 다운로드합니다.
+시장 데이터는 [`m1nd0322/data`](https://github.com/m1nd0322/data) 공유 Parquet 저장소에서 우선 로드합니다.
 
-- 공유 데이터 저장소: [`m1nd0322/data`](https://github.com/m1nd0322/data) (private)
+**자동 배포**: `m1nd0322/data`의 GitHub Actions가 매일 08:00 KST에 시장 데이터를 갱신하고, 변경된 parquet 파일을 본 레포의 `data/` 디렉터리에 자동으로 push합니다.
+
+- 배포 파일: `data/us_etfs_macro.parquet`, `data/benchmarks.parquet`
+- 런타임 로딩: 공유 데이터에 있는 티커는 yfinance 호출 없이 즉시 로드, 없는 티커만 yfinance/FDR fallback
+- 부분 히트 지원: 1055개 KR ETF 중 공유 데이터에 있는 티커는 캐시에서 로드하고 나머지만 다운로드
 - 연동 파일: `druck/data.py`
 
 ## Disclaimer
