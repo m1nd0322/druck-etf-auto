@@ -9,4 +9,5 @@ apscheduler
 fastapi
 uvicorn[standard]
 jinja2
+tabulate
 PyQt5; platform_system=="Windows"
