@@ -26,36 +26,53 @@ jobs:
       - name: Run report
         run: python run_report.py
 
-      - name: Find report file
+      - name: Find report files
         id: find_report
         run: |
           REPORT=$(ls -t output/report_*.md 2>/dev/null | head -1)
+          CSV=$(ls -t output/selection_*.csv 2>/dev/null | head -1)
           if [ -z "$REPORT" ]; then
             echo "::error::No report file found in output/"
             exit 1
           fi
-          echo "path=$REPORT" >> "$GITHUB_OUTPUT"
-          echo "Found report: $REPORT"
+          echo "md=$REPORT" >> "$GITHUB_OUTPUT"
+          echo "csv=$CSV" >> "$GITHUB_OUTPUT"
+          echo "Found: $REPORT, $CSV"
 
       - name: Send report via Telegram
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          REPORT="${{ steps.find_report.outputs.path }}"
+          REPORT="${{ steps.find_report.outputs.md }}"
+          CSV="${{ steps.find_report.outputs.csv }}"
+          CAPTION="[Druck ETF] Daily Report $(date -u -d '+9 hours' +'%Y-%m-%d %H:%M') KST"
+
+          # Send markdown report
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
             -F chat_id="${TELEGRAM_CHAT_ID}" \
             -F document=@"${REPORT}" \
-            -F caption="[Druck ETF] Daily Report $(date -u -d '+9 hours' +'%Y-%m-%d %H:%M') KST")
+            -F caption="${CAPTION}")
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-
           if [ "$HTTP_CODE" -ne 200 ]; then
-            echo "::error::Telegram API returned $HTTP_CODE: $BODY"
+            echo "::error::Telegram sendDocument (md) failed: $(echo "$RESPONSE" | sed '$d')"
             exit 1
           fi
+
+          # Send CSV if exists
+          if [ -n "$CSV" ] && [ -f "$CSV" ]; then
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+              "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+              -F chat_id="${TELEGRAM_CHAT_ID}" \
+              -F document=@"${CSV}")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+            if [ "$HTTP_CODE" -ne 200 ]; then
+              echo "::warning::Telegram sendDocument (csv) failed"
+            fi
+          fi
+
           echo "Telegram sent successfully"
 
       - name: Send report via Email
@@ -71,5 +88,5 @@ jobs:
           body: |
             Druck ETF Daily Report
             Generated at $(date -u -d '+9 hours' +'%Y-%m-%d %H:%M') KST
-          attachments: ${{ steps.find_report.outputs.path }}
+          attachments: ${{ steps.find_report.outputs.md }},${{ steps.find_report.outputs.csv }}
           content_type: text/plain
