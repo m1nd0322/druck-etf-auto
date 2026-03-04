@@ -1,0 +1,55 @@
+name: Daily Report
+
+on:
+  schedule:
+    - cron: '30 23 * * *'  # 08:30 KST (UTC+9)
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run report
+        run: python run_report.py
+
+      - name: Send report via Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          REPORT=$(ls -t output/report_*.md 2>/dev/null | head -1)
+          if [ -z "$REPORT" ]; then
+            echo "::error::No report file found in output/"
+            exit 1
+          fi
+          echo "Sending $REPORT"
+
+          # Send report file as Telegram document
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+            -F chat_id="${TELEGRAM_CHAT_ID}" \
+            -F document=@"${REPORT}" \
+            -F caption="[Druck ETF] Daily Report $(date -u -d '+9 hours' +'%Y-%m-%d %H:%M') KST")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "::error::Telegram API returned $HTTP_CODE: $BODY"
+            exit 1
+          fi
+          echo "Report sent successfully"
