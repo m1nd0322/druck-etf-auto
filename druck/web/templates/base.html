@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Druck ETF Auto{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="nav-brand">Druck ETF</a>
+    <div class="nav-links">
+      <a href="/" class="nav-link{% if active == 'dashboard' %} active{% endif %}">Dashboard</a>
+      <a href="/history" class="nav-link{% if active == 'history' %} active{% endif %}">History</a>
+    </div>
+  </nav>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

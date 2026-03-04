@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - ./output:/app/output
+      - ./.cache:/app/.cache
+      - ./config.yaml:/app/config.yaml:ro
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
