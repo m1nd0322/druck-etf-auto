@@ -26,19 +26,23 @@ jobs:
       - name: Run report
         run: python run_report.py
 
-      - name: Send report via Telegram
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Find report file
+        id: find_report
         run: |
           REPORT=$(ls -t output/report_*.md 2>/dev/null | head -1)
           if [ -z "$REPORT" ]; then
             echo "::error::No report file found in output/"
             exit 1
           fi
-          echo "Sending $REPORT"
+          echo "path=$REPORT" >> "$GITHUB_OUTPUT"
+          echo "Found report: $REPORT"
 
-          # Send report file as Telegram document
+      - name: Send report via Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          REPORT="${{ steps.find_report.outputs.path }}"
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
             -F chat_id="${TELEGRAM_CHAT_ID}" \
@@ -52,4 +56,20 @@ jobs:
             echo "::error::Telegram API returned $HTTP_CODE: $BODY"
             exit 1
           fi
-          echo "Report sent successfully"
+          echo "Telegram sent successfully"
+
+      - name: Send report via Email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "[Druck ETF] Daily Report"
+          to: matthew.kim@lgensol.com
+          from: ${{ secrets.SMTP_USERNAME }}
+          body: |
+            Druck ETF Daily Report
+            Generated at $(date -u -d '+9 hours' +'%Y-%m-%d %H:%M') KST
+          attachments: ${{ steps.find_report.outputs.path }}
+          content_type: text/plain
