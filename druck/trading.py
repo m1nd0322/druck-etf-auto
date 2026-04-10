@@ -8,6 +8,10 @@ import pandas as pd
 from .broker_base import Broker
 
 
+class TradePlanError(RuntimeError):
+    pass
+
+
 @dataclass
 class OrderIntent:
     ticker: str
@@ -24,6 +28,14 @@ class TradePlan:
     skipped: list[dict[str, Any]]
     portfolio_value: float
     cash_available: float
+    warnings: list[str]
+
+
+@dataclass
+class LiveTradeReview:
+    plan: TradePlan
+    checks: list[dict[str, Any]]
+    approved: bool
 
 
 def _normalize_positions(positions: dict[str, int]) -> dict[str, int]:
@@ -35,19 +47,29 @@ def _normalize_positions(positions: dict[str, int]) -> dict[str, int]:
     return out
 
 
+def _broker_supports_live_trading(broker: Broker) -> bool:
+    return hasattr(broker, "place_order") and hasattr(broker, "get_last_price")
+
+
 def build_trade_plan(cfg: dict, broker: Broker, target_weights: pd.Series, min_trade_weight_diff: float | None = None) -> TradePlan:
     positions = _normalize_positions(broker.get_positions())
     cash_available = float(broker.get_cash())
     portfolio_value = float(getattr(broker, "get_portfolio_value", lambda: cash_available)())
     if portfolio_value <= 0:
         portfolio_value = cash_available
+    if portfolio_value <= 0:
+        raise TradePlanError("Portfolio value must be positive to build a trade plan")
 
     threshold = float(min_trade_weight_diff if min_trade_weight_diff is not None else cfg["rebalance"]["min_trade_weight_diff"])
     round_shares = bool(cfg["rebalance"].get("round_shares", True))
 
     orders: list[OrderIntent] = []
     skipped: list[dict[str, Any]] = []
+    warnings: list[str] = []
     tracked_tickers = set(target_weights.index) | set(positions.keys())
+
+    total_buy_notional = 0.0
+    total_sell_notional = 0.0
 
     for ticker in sorted(tracked_tickers):
         target_weight = float(target_weights.get(ticker, 0.0))
@@ -73,6 +95,11 @@ def build_trade_plan(cfg: dict, broker: Broker, target_weights: pd.Series, min_t
             continue
 
         side = "BUY" if qty > 0 else "SELL"
+        est_notional = abs(qty) * last_price
+        if side == "BUY":
+            total_buy_notional += est_notional
+        else:
+            total_sell_notional += est_notional
         orders.append(
             OrderIntent(
                 ticker=ticker,
@@ -80,9 +107,14 @@ def build_trade_plan(cfg: dict, broker: Broker, target_weights: pd.Series, min_t
                 qty=abs(qty),
                 target_weight=target_weight,
                 last_price=last_price,
-                est_notional=abs(qty) * last_price,
+                est_notional=est_notional,
             )
         )
+
+    if total_buy_notional > (cash_available + total_sell_notional) * 1.02:
+        warnings.append("Estimated buy notional exceeds available cash plus expected sell proceeds")
+    if not orders:
+        warnings.append("No executable orders generated from current portfolio state")
 
     orders.sort(key=lambda x: (x.side != "SELL", -x.est_notional))
     return TradePlan(
@@ -90,7 +122,29 @@ def build_trade_plan(cfg: dict, broker: Broker, target_weights: pd.Series, min_t
         skipped=skipped,
         portfolio_value=portfolio_value,
         cash_available=cash_available,
+        warnings=warnings,
     )
+
+
+def review_live_trade(cfg: dict, broker: Broker, plan: TradePlan) -> LiveTradeReview:
+    checks: list[dict[str, Any]] = []
+    approved = True
+
+    enable_kiwoom = bool(cfg.get("mode", {}).get("enable_kiwoom", False))
+    dry_run = bool(cfg.get("mode", {}).get("dry_run", True))
+    account_no = str(cfg.get("kiwoom", {}).get("account_no", "")).strip()
+
+    checks.append({"name": "broker_support", "ok": _broker_supports_live_trading(broker), "detail": "Broker exposes required live-trading methods"})
+    checks.append({"name": "kiwoom_enabled", "ok": enable_kiwoom, "detail": "mode.enable_kiwoom must be true for live trading"})
+    checks.append({"name": "dry_run_disabled", "ok": not dry_run, "detail": "mode.dry_run must be false before real order execution"})
+    checks.append({"name": "account_configured", "ok": bool(account_no), "detail": "kiwoom.account_no must be configured"})
+    checks.append({"name": "no_tradeplan_warnings", "ok": len(plan.warnings) == 0, "detail": "; ".join(plan.warnings) if plan.warnings else "No warnings"})
+
+    for check in checks:
+        if not check["ok"]:
+            approved = False
+
+    return LiveTradeReview(plan=plan, checks=checks, approved=approved)
 
 
 def execute_trade_plan(broker: Broker, plan: TradePlan, order_type: str = "MKT") -> list[dict[str, Any]]:

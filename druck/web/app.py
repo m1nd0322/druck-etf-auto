@@ -61,6 +61,7 @@ def _format_regime_result(result: dict) -> dict:
     scores: pd.DataFrame = result["scores"]
     weights: pd.Series = result["target_weights"]
     trade_plan = result.get("trade_plan")
+    trade_review = result.get("trade_review")
 
     # selected ETFs table
     etfs = []
@@ -99,8 +100,10 @@ def _format_regime_result(result: dict) -> dict:
                 for o in trade_plan.orders
             ],
             "skipped": trade_plan.skipped,
+            "warnings": trade_plan.warnings,
             "portfolio_value": round(trade_plan.portfolio_value, 2),
             "cash_available": round(trade_plan.cash_available, 2),
+            "review": trade_review.checks if trade_review is not None else [],
         }
 
     return {
