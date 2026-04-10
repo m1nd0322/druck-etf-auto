@@ -3,13 +3,14 @@ import sys, time, math
 from dataclasses import dataclass
 from datetime import datetime, time as dtime
 from typing import Dict, Optional, Any, Tuple, List
+from zoneinfo import ZoneInfo
 
 from .broker_base import Broker
 from .utils_rate import RateLimiter
 from .db import init_db, log_fill
 
 def _now_kst() -> datetime:
-    return datetime.now()
+    return datetime.now(ZoneInfo("Asia/Seoul"))
 
 def _is_market_open_kst(now: Optional[datetime]=None) -> bool:
     now = now or _now_kst()

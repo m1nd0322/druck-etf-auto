@@ -90,14 +90,23 @@ Start in dry-run mode, verify logs/reports, then switch to live only after contr
 
 - Main config: `config.yaml`
 - Optional local override pattern: `config.local.yaml` (ignored)
+- Config is validated at startup, so missing keys or invalid thresholds fail fast
 - Data cache: `.cache/` via `data.cache_csv: true`
 - Secrets: use environment variables (Telegram bot token/chat id)
+
+## Testing
+
+```bash
+pytest
+```
+
+Added unit coverage focuses on core indicators, macro regime classification, and portfolio risk-cut behavior.
 
 ## Roadmap
 
 - Add deterministic backtest module with transaction cost model
 - Add portfolio analytics (CAGR, max DD, turnover, exposure by sleeve)
-- Add test coverage for scoring/risk-cut logic and config schema validation
+- Expand test coverage toward data loading, scheduler behavior, and execution integration
 
 ## Shared Data Integration
 

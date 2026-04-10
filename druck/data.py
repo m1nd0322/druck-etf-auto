@@ -7,12 +7,14 @@ from typing import List, Optional, Tuple
 import pandas as pd
 
 # 공유 시장 데이터 로더
+_SHARED_DATA_IMPORT_ERROR = None
 sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), '../../data')))
 try:
     from load_market_data import load_tickers
     _HAS_SHARED_DATA = True
-except ImportError:
+except ImportError as exc:
     _HAS_SHARED_DATA = False
+    _SHARED_DATA_IMPORT_ERROR = exc
 
 @dataclass
 class Universe:
@@ -114,8 +116,10 @@ def fetch_prices(tickers: List[str], start: str, end: str, prefer: str='auto', c
                 if found:
                     shared_df = shared['Close'][found].sort_index().dropna(how='all')
                     missing_tickers = [t for t in tickers if t not in found]
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[data] shared data load failed, falling back to providers: {exc}")
+    elif _SHARED_DATA_IMPORT_ERROR is not None:
+        print(f"[data] shared data loader unavailable, falling back to providers: {_SHARED_DATA_IMPORT_ERROR}")
     # 공유 데이터에 없는 티커만 다운로드
     dfs=[]
     if missing_tickers:

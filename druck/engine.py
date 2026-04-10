@@ -8,6 +8,8 @@ from .report import save_report
 from .notifier import send_telegram
 
 def run_once(cfg: dict, do_trade: bool=False, broker=None):
+    if do_trade and broker is None:
+        raise ValueError("broker is required when do_trade=True")
     start, end = get_date_range(cfg['data']['lookback_years'])
     u = make_universe(cfg)
 
@@ -60,6 +62,9 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
     msg = f"[Druck ETF] {regime.state} score={regime.risk_score:.2f} report={md_path}"
     print(msg)
     send_telegram(cfg, msg)
+
+    if do_trade:
+        print("[engine] do_trade=True is not fully wired yet, report generation completed without order submission")
 
     return {
         'regime': regime,
