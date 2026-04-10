@@ -58,6 +58,11 @@ pip install -r requirements.txt
 python run_report.py
 ```
 
+## Continuous Integration
+
+- GitHub Actions runs syntax checks, unit tests, and Docker build validation on pushes and pull requests.
+- Review branches under `review/**` are included so hardening branches are checked before merge.
+
 Generated files:
 - `output/selection_YYYYMMDD_HHMMSS.csv`
 - `output/report_YYYYMMDD_HHMMSS.md`
@@ -100,7 +105,20 @@ Start in dry-run mode, verify logs/reports, then switch to live only after contr
 pytest
 ```
 
-Added unit coverage focuses on core indicators, macro regime classification, and portfolio risk-cut behavior.
+Added unit coverage focuses on:
+- core indicators and scoring helpers
+- macro regime classification
+- config validation
+- portfolio risk-cut behavior
+- backtest scaffolding behavior
+
+## Backtest Skeleton
+
+```bash
+python run_backtest.py
+```
+
+The current backtest module is intentionally minimal. It provides a safe scaffold for future work on historical rebalancing, transaction costs, and portfolio analytics.
 
 ## Roadmap
 
