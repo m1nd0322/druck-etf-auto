@@ -1,13 +1,12 @@
 from __future__ import annotations
-import yaml
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from .config import load_config
 from .engine import run_once
-from .macro import is_vix_spike
 
 def start_scheduler():
-    cfg = yaml.safe_load(open("config.yaml", "r", encoding="utf-8"))
+    cfg = load_config("config.yaml")
     tz = cfg['schedule'].get('timezone','Asia/Seoul')
     sched = BlockingScheduler(timezone=tz)
 

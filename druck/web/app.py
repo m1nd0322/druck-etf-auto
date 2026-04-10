@@ -7,13 +7,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
-import yaml
 import pandas as pd
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from ..config import load_config
 from ..engine import run_once
 
 _HERE = Path(__file__).resolve().parent
@@ -28,22 +28,7 @@ templates = Jinja2Templates(directory=str(_HERE / "templates"))
 # ---------------------------------------------------------------------------
 
 def _load_cfg() -> dict:
-    cfg_path = _ROOT / "config.yaml"
-    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
-    local_path = _ROOT / "config.local.yaml"
-    if local_path.exists():
-        local = yaml.safe_load(local_path.read_text(encoding="utf-8"))
-        if local:
-            _deep_merge(cfg, local)
-    return cfg
-
-
-def _deep_merge(base: dict, override: dict):
-    for k, v in override.items():
-        if k in base and isinstance(base[k], dict) and isinstance(v, dict):
-            _deep_merge(base[k], v)
-        else:
-            base[k] = v
+    return load_config(_ROOT / "config.yaml", _ROOT / "config.local.yaml")
 
 
 def _list_reports() -> List[Dict[str, Any]]:

@@ -10,4 +10,5 @@ fastapi
 uvicorn[standard]
 jinja2
 tabulate
+pytest
 PyQt5; platform_system=="Windows"
