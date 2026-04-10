@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from ..config import load_config
 from ..engine import run_once
+from ..backtest import run_backtest
 
 _HERE = Path(__file__).resolve().parent
 _ROOT = Path.cwd()
@@ -59,6 +60,7 @@ def _format_regime_result(result: dict) -> dict:
     regime = result["regime"]
     scores: pd.DataFrame = result["scores"]
     weights: pd.Series = result["target_weights"]
+    trade_plan = result.get("trade_plan")
 
     # selected ETFs table
     etfs = []
@@ -84,6 +86,23 @@ def _format_regime_result(result: dict) -> dict:
         except (TypeError, ValueError):
             details[k] = str(v)
 
+    trade_summary = None
+    if trade_plan is not None:
+        trade_summary = {
+            "orders": [
+                {
+                    "ticker": o.ticker,
+                    "side": o.side,
+                    "qty": o.qty,
+                    "est_notional": round(o.est_notional, 2),
+                }
+                for o in trade_plan.orders
+            ],
+            "skipped": trade_plan.skipped,
+            "portfolio_value": round(trade_plan.portfolio_value, 2),
+            "cash_available": round(trade_plan.cash_available, 2),
+        }
+
     return {
         "state": regime.state,
         "risk_score": round(regime.risk_score, 4),
@@ -91,6 +110,7 @@ def _format_regime_result(result: dict) -> dict:
         "etfs": etfs,
         "report_path": result.get("report_path", ""),
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "trade_plan": trade_summary,
     }
 
 
@@ -98,6 +118,7 @@ def _format_regime_result(result: dict) -> dict:
 # In-memory latest result cache
 # ---------------------------------------------------------------------------
 _latest: dict | None = None
+_backtest_latest: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +143,29 @@ async def api_run():
         result = run_once(cfg, do_trade=False)
         _latest = _format_regime_result(result)
         return {"ok": True, "data": _latest}
+     except Exception as exc:
+         return JSONResponse(
+             status_code=500,
+             content={"ok": False, "error": str(exc), "trace": traceback.format_exc()},
+         )
++
++
++@app.post("/api/backtest", response_class=JSONResponse)
++async def api_backtest():
++    global _backtest_latest
++    try:
++        cfg = _load_cfg()
++        result = run_backtest(cfg)
++        _backtest_latest = {
++            "summary": result.summary,
++            "rows": result.rebalance_log.to_dict(orient="records"),
++        }
++        return {"ok": True, "data": _backtest_latest}
++    except Exception as exc:
++        return JSONResponse(
++            status_code=500,
++            content={"ok": False, "error": str(exc), "trace": traceback.format_exc()},
++        )
     except Exception as exc:
         return JSONResponse(
             status_code=500,
@@ -158,3 +202,12 @@ async def history_page(request: Request):
         "request": request,
         "reports": _list_reports(),
     })
+
+
++@app.get("/api/status", response_class=JSONResponse)
++async def api_status():
++    return {
++        "latest": _latest,
++        "backtest": _backtest_latest,
++        "reports": _list_reports()[:10],
++    }

@@ -1,11 +1,11 @@
 from __future__ import annotations
 import pandas as pd
-import yaml
 from .data import make_universe, fetch_prices, get_date_range
 from .macro import compute_macro_regime, is_vix_spike
 from .portfolio import score_universe, allocate_weights, apply_risk_cuts
 from .report import save_report
 from .notifier import send_telegram
+from .trading import build_trade_plan, execute_trade_plan
 
 def run_once(cfg: dict, do_trade: bool=False, broker=None):
     if do_trade and broker is None:
@@ -59,12 +59,17 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         out.loc[cash, 'weight_after_cuts'] = float(final_w[cash])
 
     md_path = save_report('output', out.sort_values('weight_after_cuts', ascending=False), regime.details, cuts)
+    trade_plan = None
+    executed_orders = []
+    if do_trade:
+        trade_plan = build_trade_plan(cfg, broker, final_w)
+        executed_orders = execute_trade_plan(broker, trade_plan)
+
     msg = f"[Druck ETF] {regime.state} score={regime.risk_score:.2f} report={md_path}"
+    if trade_plan is not None:
+        msg += f" orders={len(trade_plan.orders)}"
     print(msg)
     send_telegram(cfg, msg)
-
-    if do_trade:
-        print("[engine] do_trade=True is not fully wired yet, report generation completed without order submission")
 
     return {
         'regime': regime,
@@ -72,4 +77,6 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         'target_weights': final_w,
         'prices': all_px,
         'report_path': md_path,
+        'trade_plan': trade_plan,
+        'executed_orders': executed_orders,
     }

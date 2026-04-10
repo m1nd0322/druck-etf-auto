@@ -60,6 +60,12 @@ def test_validate_config_rejects_invalid_threshold_order():
         validate_config(cfg)
 
 
+def test_validate_config_rejects_invalid_schedule_hour():
+    cfg = VALID_CFG | {"schedule": VALID_CFG["schedule"] | {"risk_check_daily": {"hour": 25, "minute": 5}}}
+    with pytest.raises(ConfigError):
+        validate_config(cfg)
+
+
 def test_load_config_reads_yaml(tmp_path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text(

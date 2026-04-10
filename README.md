@@ -44,7 +44,8 @@ This structure aims to improve consistency across changing market states instead
 
 ## Architecture
 
-- `druck/engine.py`: end-to-end pipeline (`data -> regime -> scoring -> weights -> cuts -> report`)
+- `druck/engine.py`: end-to-end pipeline (`data -> regime -> scoring -> weights -> cuts -> report -> optional trade plan`)
+- `druck/trading.py`: order-intent generation and execution path helpers
 - `druck/macro.py`: macro regime scoring and VIX spike halt signal
 - `druck/portfolio.py`: cross-sectional scoring, sizing, risk cuts
 - `druck/report.py`: Markdown/CSV report generation
@@ -74,6 +75,30 @@ python run_auto.py
 ```
 
 Schedule values are defined in `config.yaml` under `schedule`.
+
+## Install
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+## Dry Run Workflow
+
+1. Keep `mode.dry_run: true`
+2. Run `python run_report.py`
+3. Review generated markdown and CSV output in `output/`
+4. If using the web dashboard, inspect the latest regime and order plan preview first
+
+## Live Transition Checklist
+
+1. Confirm Kiwoom credentials and Windows environment readiness
+2. Keep `mode.enable_kiwoom: true` but remain on `dry_run: true` first
+3. Review the generated order plan and risk-cut outputs
+4. Switch `dry_run` off only after report checks, account checks, and order review pass
+5. Monitor fills and notifier output during the first live session
 
 ## Live Trading Setup (Kiwoom, Windows)
 
