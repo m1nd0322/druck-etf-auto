@@ -105,6 +105,8 @@ Start in dry-run mode, verify logs/reports, then switch to live only after contr
 pytest
 ```
 
+`pytest.ini` pins the repository root into the Python path so local runs and GitHub Actions collect the same package imports.
+
 Added unit coverage focuses on:
 - core indicators and scoring helpers
 - macro regime classification
