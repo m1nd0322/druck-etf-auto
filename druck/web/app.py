@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 
 from ..backtest import run_backtest
 from ..config import load_config
-from ..db import fetch_trade_audit
+from ..db import fetch_operator_ack, fetch_trade_audit, init_db, log_operator_ack
 from ..engine import run_once
 
 _HERE = Path(__file__).resolve().parent
@@ -23,14 +23,17 @@ _HERE = Path(__file__).resolve().parent
 def _root() -> Path:
     return Path.cwd()
 
+
 app = FastAPI(title="Druck ETF Auto")
 app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
 
 
+
 def _load_cfg() -> dict:
     root = _root()
     return load_config(root / "config.yaml", root / "config.local.yaml")
+
 
 
 def _list_reports() -> List[Dict[str, Any]]:
@@ -49,6 +52,7 @@ def _list_reports() -> List[Dict[str, Any]]:
     return reports
 
 
+
 def _read_report(filename: str) -> str | None:
     p = _root() / "output" / filename
     if p.exists() and p.suffix == ".md":
@@ -56,16 +60,37 @@ def _read_report(filename: str) -> str | None:
     return None
 
 
-def _read_trade_audit(limit: int = 50) -> list[dict[str, Any]]:
+
+def _db_conn() -> sqlite3.Connection | None:
     db_path = _root() / "trade_log.db"
     if not db_path.exists():
+        return None
+    return sqlite3.connect(db_path)
+
+
+
+def _read_trade_audit(limit: int = 50) -> list[dict[str, Any]]:
+    conn = _db_conn()
+    if conn is None:
         return []
-    conn = sqlite3.connect(db_path)
     try:
         rows = fetch_trade_audit(conn)
         return rows[:limit]
     finally:
         conn.close()
+
+
+
+def _read_operator_ack(limit: int = 20) -> list[dict[str, Any]]:
+    conn = _db_conn()
+    if conn is None:
+        return []
+    try:
+        rows = fetch_operator_ack(conn)
+        return rows[:limit]
+    finally:
+        conn.close()
+
 
 
 def _format_regime_result(result: dict) -> dict:
@@ -74,6 +99,7 @@ def _format_regime_result(result: dict) -> dict:
     weights: pd.Series = result["target_weights"]
     trade_plan = result.get("trade_plan")
     trade_review = result.get("trade_review")
+    rebalance_result = result.get("rebalance_result")
 
     etfs = []
     for ticker in weights.index:
@@ -117,6 +143,16 @@ def _format_regime_result(result: dict) -> dict:
             "review": trade_review.checks if trade_review is not None else [],
         }
 
+    rebalance_summary = None
+    if rebalance_result is not None:
+        rebalance_summary = {
+            "needs_replan": rebalance_result.needs_replan,
+            "detail": rebalance_result.detail,
+            "operator_ack_required": rebalance_result.operator_ack_required,
+            "operator_ack_state": rebalance_result.operator_ack_state,
+            "executions": rebalance_result.executions,
+        }
+
     return {
         "state": regime.state,
         "risk_score": round(regime.risk_score, 4),
@@ -125,6 +161,7 @@ def _format_regime_result(result: dict) -> dict:
         "report_path": result.get("report_path", ""),
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "trade_plan": trade_summary,
+        "rebalance": rebalance_summary,
     }
 
 
@@ -136,6 +173,7 @@ _backtest_latest: dict | None = None
 async def dashboard(request: Request):
     reports = _list_reports()
     audit_rows = _read_trade_audit()
+    ack_rows = _read_operator_ack()
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -143,6 +181,7 @@ async def dashboard(request: Request):
             "latest": _latest,
             "reports": reports[:20],
             "audit_rows": audit_rows,
+            "ack_rows": ack_rows,
         },
     )
 
@@ -198,6 +237,29 @@ async def api_audit():
     return {"rows": _read_trade_audit(limit=200)}
 
 
+@app.get("/api/ack", response_class=JSONResponse)
+async def api_ack():
+    return {"rows": _read_operator_ack(limit=200)}
+
+
+@app.post("/api/ack", response_class=JSONResponse)
+async def api_ack_create(payload: dict):
+    ack_type = str(payload.get("ack_type", "")).strip()
+    note = str(payload.get("note", "")).strip()
+    status = str(payload.get("status", "acknowledged")).strip() or "acknowledged"
+    if not ack_type:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "ack_type is required"})
+
+    db_path = _root() / "trade_log.db"
+    conn = init_db(str(db_path))
+    try:
+        log_operator_ack(conn, ack_type=ack_type, status=status, note=note)
+        rows = fetch_operator_ack(conn, ack_type=ack_type)
+        return {"ok": True, "row": rows[0] if rows else None}
+    finally:
+        conn.close()
+
+
 @app.get("/report/{filename}", response_class=HTMLResponse)
 async def report_page(request: Request, filename: str):
     content = _read_report(filename)
@@ -229,4 +291,5 @@ async def api_status():
         "backtest": _backtest_latest,
         "reports": _list_reports()[:10],
         "audit": _read_trade_audit(limit=20),
+        "ack": _read_operator_ack(limit=20),
     }

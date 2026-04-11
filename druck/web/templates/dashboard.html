@@ -78,6 +78,34 @@
   </section>
   {% endif %}
 
+  {% if ack_rows %}
+  <section class="section">
+    <h2>Recent Operator Acknowledgements</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Ack Type</th>
+            <th>Status</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in ack_rows[:10] %}
+          <tr>
+            <td>{{ row.timestamp }}</td>
+            <td>{{ row.ack_type }}</td>
+            <td>{{ row.status }}</td>
+            <td>{{ row.note }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
   {% if reports %}
   <section class="section">
     <h2>Recent Reports</h2>

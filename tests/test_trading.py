@@ -1,6 +1,7 @@
 import pandas as pd
 import pytest
 
+from druck.db import init_db, log_operator_ack
 from druck.trading import TradePlanError, build_trade_plan, execute_trade_plan, review_live_trade, run_rebalance_cycle
 
 
@@ -118,3 +119,21 @@ def test_run_rebalance_cycle_marks_replan_on_partial_fill():
     result = run_rebalance_cycle(cfg, broker, pd.Series({"SPY": 0.0, "SHY": 1.0}), max_replans=0)
     assert result.needs_replan is True
     assert result.detail == "partial_fill_detected"
+    assert result.operator_ack_required is True
+    assert result.operator_ack_state is None
+
+
+def test_run_rebalance_cycle_includes_latest_operator_ack_state(tmp_path):
+    cfg = {
+        "mode": {"enable_kiwoom": True, "dry_run": False},
+        "kiwoom": {"account_no": "123"},
+        "rebalance": {"min_trade_weight_diff": 0.01, "round_shares": True},
+    }
+    broker = PartialFillBroker()
+    broker._db = init_db(str(tmp_path / "trade_log.db"))
+    log_operator_ack(broker._db, ack_type="partial_fill_replan", status="acknowledged", note="checked")
+
+    result = run_rebalance_cycle(cfg, broker, pd.Series({"SPY": 0.0, "SHY": 1.0}), max_replans=0)
+    assert result.operator_ack_required is True
+    assert result.operator_ack_state is not None
+    assert result.operator_ack_state["status"] == "acknowledged"

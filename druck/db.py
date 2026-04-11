@@ -31,6 +31,16 @@ def init_db(path: str = "trade_log.db") -> sqlite3.Connection:
     )
     """
     )
+    c.execute(
+        """
+    CREATE TABLE IF NOT EXISTS operator_ack (
+        timestamp TEXT,
+        ack_type TEXT,
+        status TEXT,
+        note TEXT
+    )
+    """
+    )
     conn.commit()
     return conn
 
@@ -61,6 +71,7 @@ def log_trade_audit(
     conn.commit()
 
 
+
 def fetch_trade_audit(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     c = conn.cursor()
     rows = c.execute(
@@ -75,6 +86,44 @@ def fetch_trade_audit(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "qty": row[4],
             "status": row[5],
             "detail": row[6],
+        }
+        for row in rows
+    ]
+
+
+
+def log_operator_ack(
+    conn: sqlite3.Connection,
+    ack_type: str,
+    status: str = "acknowledged",
+    note: str = "",
+):
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO operator_ack VALUES (?,?,?,?)",
+        (datetime.now().isoformat(), ack_type, status, note),
+    )
+    conn.commit()
+
+
+
+def fetch_operator_ack(conn: sqlite3.Connection, ack_type: str | None = None) -> list[dict[str, Any]]:
+    c = conn.cursor()
+    if ack_type:
+        rows = c.execute(
+            "SELECT timestamp, ack_type, status, note FROM operator_ack WHERE ack_type=? ORDER BY timestamp DESC",
+            (ack_type,),
+        ).fetchall()
+    else:
+        rows = c.execute(
+            "SELECT timestamp, ack_type, status, note FROM operator_ack ORDER BY timestamp DESC"
+        ).fetchall()
+    return [
+        {
+            "timestamp": row[0],
+            "ack_type": row[1],
+            "status": row[2],
+            "note": row[3],
         }
         for row in rows
     ]

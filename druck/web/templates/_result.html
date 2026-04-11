@@ -85,6 +85,43 @@
 </section>
 {% endif %}
 
+{% if latest.rebalance %}
+<section class="section">
+  <h2>Rebalance Status</h2>
+  {% if latest.rebalance.needs_replan %}
+  <div class="alert alert-warning">
+    Replan required: {{ latest.rebalance.detail }}
+  </div>
+  {% else %}
+  <div class="alert alert-success">
+    Rebalance cycle completed without replan request.
+  </div>
+  {% endif %}
+
+  <ul>
+    <li><strong>Operator acknowledgement required:</strong> {{ 'YES' if latest.rebalance.operator_ack_required else 'NO' }}</li>
+    <li><strong>Latest acknowledgement:</strong>
+      {% if latest.rebalance.operator_ack_state %}
+        {{ latest.rebalance.operator_ack_state.status }} at {{ latest.rebalance.operator_ack_state.timestamp }}
+        {% if latest.rebalance.operator_ack_state.note %}
+          ({{ latest.rebalance.operator_ack_state.note }})
+        {% endif %}
+      {% else %}
+        none
+      {% endif %}
+    </li>
+  </ul>
+
+  {% if latest.rebalance.operator_ack_required %}
+  <div class="ack-box">
+    <label for="ack-note"><strong>Operator acknowledgement note</strong></label>
+    <input id="ack-note" type="text" placeholder="Example: reviewed partial fill and approved manual replan" />
+    <button class="btn btn-secondary" onclick="acknowledgeReplan()">Acknowledge Replan</button>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="section">
   <h2>Selected ETFs</h2>
   <div class="table-wrap">
@@ -122,3 +159,20 @@
     </table>
   </div>
 </section>
+
+<script>
+async function acknowledgeReplan() {
+  const note = document.getElementById('ack-note')?.value || '';
+  const resp = await fetch('/api/ack', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ack_type: 'partial_fill_replan', status: 'acknowledged', note })
+  });
+  const body = await resp.json();
+  if (!resp.ok || !body.ok) {
+    alert(body.error || 'Failed to record acknowledgement');
+    return;
+  }
+  window.location.reload();
+}
+</script>

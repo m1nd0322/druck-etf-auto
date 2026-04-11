@@ -6,7 +6,7 @@ from typing import Any
 import pandas as pd
 
 from .broker_base import Broker
-from .db import log_trade_audit
+from .db import fetch_operator_ack, log_trade_audit
 
 
 class TradePlanError(RuntimeError):
@@ -55,6 +55,8 @@ class RebalanceCycleResult:
     executions: list[dict[str, Any]]
     needs_replan: bool
     detail: str
+    operator_ack_required: bool
+    operator_ack_state: dict[str, Any] | None
 
 
 def _normalize_positions(positions: dict[str, int]) -> dict[str, int]:
@@ -81,6 +83,14 @@ def _classify_broker_error(exc: Exception) -> str:
     if "insufficient" in text or "cash" in text:
         return "funding"
     return "broker_error"
+
+
+def _latest_ack_state(broker: Broker, ack_type: str) -> dict[str, Any] | None:
+    audit_conn = getattr(broker, "_db", None)
+    if audit_conn is None:
+        return None
+    rows = fetch_operator_ack(audit_conn, ack_type=ack_type)
+    return rows[0] if rows else None
 
 
 def build_trade_plan(cfg: dict, broker: Broker, target_weights: pd.Series, min_trade_weight_diff: float | None = None) -> TradePlan:
@@ -223,6 +233,8 @@ def run_rebalance_cycle(cfg: dict, broker: Broker, target_weights: pd.Series, ma
     all_executions: list[dict[str, Any]] = []
     needs_replan = False
     detail = "completed"
+    operator_ack_required = False
+    operator_ack_state = None
 
     for attempt in range(max_replans + 1):
         plan = build_trade_plan(cfg, broker, target_weights)
@@ -237,10 +249,18 @@ def run_rebalance_cycle(cfg: dict, broker: Broker, target_weights: pd.Series, ma
 
         if any(e["status"] == "partial_fill" for e in executions):
             needs_replan = True
+            operator_ack_required = True
+            operator_ack_state = _latest_ack_state(broker, "partial_fill_replan")
             detail = "partial_fill_detected"
             if attempt >= max_replans:
                 break
             continue
         break
 
-    return RebalanceCycleResult(executions=all_executions, needs_replan=needs_replan, detail=detail)
+    return RebalanceCycleResult(
+        executions=all_executions,
+        needs_replan=needs_replan,
+        detail=detail,
+        operator_ack_required=operator_ack_required,
+        operator_ack_state=operator_ack_state,
+    )
