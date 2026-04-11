@@ -30,11 +30,13 @@ def _base_cfg():
             "transaction_cost_bps": 1.5,
             "slippage_bps": 3.0,
             "market_impact_bps_per_turnover": 5.0,
+            "liquidity_vol_multiplier_bps": 2.0,
             "starting_capital": 1.0,
             "benchmark_ticker": "SPY",
             "min_history_days": 252,
             "strict_point_in_time": True,
             "drop_incomplete_assets": True,
+            "enforce_delist_exit": True,
             "walkforward": {"enabled": True, "train_days": 252, "test_days": 42, "step_days": 42},
         },
     }
@@ -69,6 +71,7 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert result.analytics is not None
     assert "walkforward_windows" in result.analytics
     assert result.walkforward_summary is not None
+    assert "factor_regime_attribution" in result.analytics
 
 
 def test_run_backtest_counts_halts(monkeypatch):
@@ -98,7 +101,7 @@ def test_run_backtest_counts_halts(monkeypatch):
     assert result.summary["halt_count"] >= 1
 
 
-def test_run_backtest_tracks_slippage_and_impact_costs(monkeypatch):
+def test_run_backtest_tracks_slippage_impact_and_liquidity_costs(monkeypatch):
     cfg = _base_cfg()
     idx = pd.date_range("2024-01-01", periods=420, freq="B")
     px = pd.DataFrame({
@@ -115,12 +118,14 @@ def test_run_backtest_tracks_slippage_and_impact_costs(monkeypatch):
     result = run_backtest(cfg)
     assert result.summary["total_slippage_cost"] >= 0.0
     assert result.summary["total_impact_cost"] >= 0.0
+    assert result.summary["total_liquidity_penalty"] >= 0.0
 
 
-def test_run_backtest_drops_incomplete_assets_in_strict_pit(monkeypatch):
+def test_run_backtest_drops_incomplete_assets_and_marks_delisted(monkeypatch):
     cfg = _base_cfg()
     idx = pd.date_range("2024-01-01", periods=420, freq="B")
     late_series = pd.Series([200 + i * 0.2 for i in range(100)], index=idx[-100:])
+    delisted_series = pd.Series([150 + i * 0.1 for i in range(300)], index=idx[:300])
     px = pd.DataFrame({
         "SPY": pd.Series([100 + i * 0.2 for i in range(420)], index=idx),
         "SHY": pd.Series([100.0] * 420, index=idx),
@@ -130,10 +135,13 @@ def test_run_backtest_drops_incomplete_assets_in_strict_pit(monkeypatch):
         "TLT": pd.Series([100.0] * 420, index=idx),
         "^VIX": pd.Series([18.0] * 420, index=idx),
         "LATE": late_series,
+        "DELIST": delisted_series,
     })
-    cfg["universe"]["us"]["tickers"].append("LATE")
+    cfg["universe"]["us"]["tickers"].extend(["LATE", "DELIST"])
     monkeypatch.setattr("druck.backtest.make_universe", lambda cfg: type("U", (), {"kr": [], "us": cfg["universe"]["us"]["tickers"]})())
     monkeypatch.setattr("druck.backtest.fetch_prices", lambda tickers, start, end, prefer='auto', cache_dir=None, use_cache=True: px[tickers])
     result = run_backtest(cfg)
     for weights in result.rebalance_log["weights"]:
         assert "LATE" not in weights
+    assert "LATE" in result.summary["dropped_incomplete_assets"]
+    assert "DELIST" in result.summary["delisted_assets"]
