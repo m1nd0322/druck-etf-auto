@@ -1,82 +1,99 @@
-﻿# druck-etf-auto
+# druck-etf-auto
 
 [![CI](https://github.com/m1nd0322/druck-etf-auto/actions/workflows/ci.yml/badge.svg)](https://github.com/m1nd0322/druck-etf-auto/actions/workflows/ci.yml)
 
-Macro regime + momentum ETF allocation engine for KR/US universes, designed as a production-minded personal quant portfolio project.
+Macro-regime and momentum ETF allocation engine for KR/US universes, hardened for safer personal operation.
 
-## Investment Thesis
+> Korean version: see [README.ko.md](README.ko.md)
 
-- Cross-asset macro signals define market regime (`RISK_ON` / `NEUTRAL` / `RISK_OFF`).
-- Within regime, ETF selection uses momentum and trend, penalized by volatility and drawdown.
-- Portfolio risk is cut mechanically (200SMA break, trailing drawdown, hard stop), with capital rotated to cash ETF.
+## What this project does
 
-This structure aims to improve consistency across changing market states instead of relying on a single static allocation rule.
+`druck-etf-auto` is an automated portfolio workflow that:
+- reads market data
+- classifies the market regime (`RISK_ON`, `NEUTRAL`, `RISK_OFF`)
+- scores ETFs using momentum, trend, volatility, and drawdown
+- builds target portfolio weights
+- applies risk-cut rules
+- generates a report
+- optionally prepares or executes trade plans
 
-## Strategy Stack
+This repository is designed to be **safe by default**.
+Live trading is not the default mode.
 
-- Macro filter components:
-- `SPY` trend, `UUP` momentum, `HYG vs IEF` credit spread proxy, `TLT` rates, `^VIX` volatility regime
-- Selection/scoring:
-- Momentum + trend alpha terms
-- Volatility and max drawdown penalty terms
-- Regime-dependent concentration:
-- `top_n_risk_on` and `top_n_risk_off` are separated in config
-- Position sizing:
-- Inverse-vol weighting with single-position cap (`max_weight`)
-- Risk cut layer:
-- Below 200SMA cut
-- Trailing drawdown cut
-- Hard stop cut
-- Cut weight moves to configured cash ETF (`SHY` by default for US)
+## Who this is for
 
-## Execution and Safety
+This README is written for someone using the system for the first time.
+If you want to understand the project quickly, follow this order:
 
-- Default `dry_run: true` (safe by default, no live order submission).
-- Scheduler-driven operation via APScheduler:
-- Weekly report run
-- Daily risk-check run
-- Kiwoom OpenAPI+ execution path (Windows):
-- Market-hours gate and near-close block
-- Split execution (`split_n`)
-- Unfilled cancel/reorder flow
-- Slippage guard (`slippage_limit_bps`)
-- Fill logging to SQLite (`trade_log.db`, ignored by git)
+1. Install the environment
+2. Run a report in dry-run mode
+3. Open the dashboard
+4. Run a backtest snapshot
+5. Review safety signals and logs
+6. Only then consider live broker integration
 
-## Architecture
+## Safety model
 
-- `druck/engine.py`: end-to-end pipeline (`data -> regime -> scoring -> weights -> cuts -> report -> optional trade plan`)
-- `druck/trading.py`: order-intent generation and execution path helpers
-- `druck/macro.py`: macro regime scoring and VIX spike halt signal
-- `druck/portfolio.py`: cross-sectional scoring, sizing, risk cuts
-- `druck/report.py`: Markdown/CSV report generation
-- `druck/scheduler.py`: cron-based automation
-- `druck/kiwoom_broker.py`: broker integration (Windows only)
+The system separates **system errors** from **strategy danger signals**.
 
-## Quick Start
+### System errors
+Examples:
+- data fetch failure
+- notifier failure
+- transient runtime error
+- scheduler job error
 
-```bash
-pip install -r requirements.txt
-python run_report.py
-```
+Expected behavior:
+- the system should report the error
+- the system should not unnecessarily kill the whole operating loop
 
-## Continuous Integration
+### Strategy danger signals
+Examples:
+- very weak macro regime
+- too many negative-momentum selections
+- excessive shift to cash
+- performance-degradation signals
+- benchmark-relative weakness
 
-- GitHub Actions runs syntax checks, unit tests, and Docker build validation on pushes and pull requests.
-- Review branches under `review/**` are included so hardening branches are checked before merge.
+Expected behavior:
+- the system can keep running
+- trading can be halted for safety
+- the operator reviews the dashboard, runtime events, and logs
 
-Generated files:
-- `output/selection_YYYYMMDD_HHMMSS.csv`
-- `output/report_YYYYMMDD_HHMMSS.md`
+## Main features
 
-## Automated Run
+- validated config loading (`druck/config.py`)
+- dry-run-first workflow
+- dashboard with report, order preview, audit, runtime events, and halt visibility
+- trade audit logging
+- operator acknowledgement flow for replan events
+- bounded replan loop after partial fills
+- runtime guard for reporting errors without collapsing the full loop
+- strategy halt rules for dangerous trade conditions
+- backtest scaffold for future historical expansion
+- CI and test coverage for core logic and operator workflow
 
-```bash
-python run_auto.py
-```
+## Repository structure
 
-Schedule values are defined in `config.yaml` under `schedule`.
+- `druck/engine.py` - end-to-end run pipeline
+- `druck/trading.py` - trade plan generation, review, execution, replan loop
+- `druck/runtime.py` - runtime guard and runtime event reporting
+- `druck/db.py` - fills, trade audit, operator acknowledgement, runtime event persistence
+- `druck/web/app.py` - dashboard and APIs
+- `druck/backtest.py` - current backtest scaffold
+- `run_report.py` - run a report once
+- `run_backtest.py` - run a backtest snapshot
+- `run_auto.py` - scheduler entry point
+- `run_web.py` - web dashboard entry point
 
-## Install
+## 1. Installation
+
+### Requirements
+- Python 3.11+ recommended
+- Linux/macOS for report, dashboard, testing, and backtest scaffold
+- Windows required for Kiwoom live broker path
+
+### Install steps
 
 ```bash
 python3 -m venv .venv
@@ -85,104 +102,244 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-## Dry Run Workflow
+## 2. First run, safest path
 
-1. Keep `mode.dry_run: true`
-2. Run `python run_report.py`
-3. Review generated markdown and CSV output in `output/`
-4. If using the web dashboard, inspect the latest regime and order plan preview first
+The safest first experience is **report only**.
 
-## Live Transition Checklist
+### Check config
+Main config file:
+- `config.yaml`
 
-1. Confirm Kiwoom credentials and Windows environment readiness
-2. Keep `mode.enable_kiwoom: true` but remain on `dry_run: true` first
-3. Review the generated order plan, warnings, and live review checks
-4. Check recent trade audit events in the dashboard or `/api/audit`
-5. Confirm broker-side failure classes during dry-run and first live session, for example market-closed, slippage, connection, or funding errors
-6. Switch `dry_run` off only after report checks, account checks, and order review pass
-7. Monitor fills, audit events, notifier output, and any partial-fill replan requests during the first live session
+Default safety values already include:
+- `mode.dry_run: true`
+- `mode.enable_kiwoom: false`
 
-## Live Trading Setup (Kiwoom, Windows)
+That means no real live order submission by default.
 
-1. Install Kiwoom OpenAPI+
-2. Ensure `PyQt5` is available (Windows marker is already in `requirements.txt`)
-3. Update `config.yaml`:
+### Run one report
+
+```bash
+. .venv/bin/activate
+python run_report.py
+```
+
+Expected outputs:
+- `output/report_YYYYMMDD_HHMMSS.md`
+- `output/selection_YYYYMMDD_HHMMSS.csv`
+
+## 3. Open the dashboard
+
+```bash
+. .venv/bin/activate
+python run_web.py
+```
+
+Then open the local dashboard in your browser.
+
+What to look at first:
+- latest regime state
+- risk score
+- selected ETFs
+- order plan preview
+- warnings
+- runtime events
+- strategy halt status
+- recent trade audit events
+- recent operator acknowledgements
+
+## 4. Run a backtest snapshot
+
+```bash
+. .venv/bin/activate
+python run_backtest.py
+```
+
+Important note:
+- this is currently a **scaffold**, not a full institutional backtest engine
+- use it as a shape and workflow check, not as a final portfolio research conclusion
+
+## 5. Understand key safety controls
+
+### Dry run
+- `mode.dry_run: true`
+- safest mode for first-time use
+- generates trade intent and review information without real order submission
+
+### Live trade review gate
+Before live execution, the system checks:
+- broker support
+- Kiwoom enabled state
+- dry-run disabled state
+- account configuration
+- trade-plan warnings
+
+### Partial fill handling
+If a partial fill happens:
+- the system marks the cycle as replan-required
+- it does not treat the cycle as clean completion
+- the dashboard shows acknowledgement requirements
+- the operator can record acknowledgement and note
+
+### Runtime events
+Runtime events capture operational issues such as:
+- `system_error`
+- `strategy_halt`
+
+These events are visible in the dashboard and API.
+They can also be resolved by the operator with a note.
+
+### Strategy halt
+Trading may stop when signals suggest the strategy is going in the wrong direction.
+Current halt families include:
+- macro risk weakness
+- too many negative momentum assets
+- excessive cash concentration after cuts
+- clustered risk cuts
+- average score degradation
+- average momentum degradation
+- recent return weakness proxy
+- benchmark-relative weakness
+
+## 6. Configuration guide for beginners
+
+Important config sections:
+- `mode` - dry run and Kiwoom enable flag
+- `data` - lookback, provider, cache settings
+- `macro_filter` - regime thresholds and components
+- `selection` - ETF scoring and concentration
+- `risk_cut` - defensive risk controls
+- `rebalance` - minimum trade thresholds
+- `strategy_halt` - trade-stop rules when signals degrade
+- `schedule` - report and risk-check timing
+- `notifier` - Telegram notifications
+- `kiwoom` - broker execution settings
+
+### Example beginner-safe mode
 
 ```yaml
 mode:
-  enable_kiwoom: true
   dry_run: true
+  enable_kiwoom: false
+```
+
+Stay here until you understand the generated reports and dashboard behavior.
+
+## 7. Moving toward live trading
+
+Live trading should be staged.
+
+### Stage 1, report only
+- run `run_report.py`
+- inspect outputs
+
+### Stage 2, dashboard and backtest scaffold
+- run dashboard
+- run backtest snapshot
+- inspect runtime events and halt states
+
+### Stage 3, Kiwoom dry-run review
+Set:
+
+```yaml
+mode:
+  dry_run: true
+  enable_kiwoom: true
 kiwoom:
   account_no: "YOUR_ACCOUNT_NO"
 ```
 
-Start in dry-run mode, verify logs/reports, then switch to live only after controls are validated.
+Then review:
+- order plan preview
+- live review checks
+- audit logs
+- runtime events
 
-## Live Rollout Recommendation
+### Stage 4, first live rollout
+Only after prior stages are stable:
+- disable dry run
+- start with small exposure
+- actively monitor fills, audits, runtime events, and strategy halt signals
 
-- Stage 1: run report-only and backtest-only checks
-- Stage 2: enable Kiwoom with `dry_run: true` and inspect order intent plus audit logs
-- Stage 3: perform first live rollout with small exposure and active monitoring
-- Stage 4: only after stable fills and reconciled positions, allow normal-size live operation
+## 8. Commands you will actually use
 
-If a partial fill occurs, the system now marks the rebalance cycle for replan instead of blindly continuing. Treat that as an operator review point, not an automatic green light.
-
-System/runtime errors are now intended to be reported without taking down the whole operating loop. By contrast, strategy danger signals and performance-degradation signals can halt trading while keeping the system alive for visibility and operator review.
-
-## Reproducibility and Config
-
-- Main config: `config.yaml`
-- Optional local override pattern: `config.local.yaml` (ignored)
-- Config is validated at startup, so missing keys or invalid thresholds fail fast
-- Data cache: `.cache/` via `data.cache_csv: true`
-- Secrets: use environment variables (Telegram bot token/chat id)
-
-## Testing
-
+### Run one report
 ```bash
-pytest
+python run_report.py
 ```
 
-`pytest.ini` pins the repository root into the Python path so local runs and GitHub Actions collect the same package imports.
+### Run scheduler
+```bash
+python run_auto.py
+```
 
-Added unit coverage focuses on:
-- core indicators and scoring helpers
-- macro regime classification
-- config validation
-- portfolio risk-cut behavior
-- backtest scaffolding behavior
-- data cache behavior
-- scheduler and notifier behavior
-- trade review and audit logging
-- runtime guard classification and strategy halt behavior
-- web audit/runtime visibility
+### Run dashboard
+```bash
+python run_web.py
+```
 
-## Backtest Skeleton
+### Run tests
+```bash
+pytest -q
+```
 
+### Run backtest scaffold
 ```bash
 python run_backtest.py
 ```
 
-The current backtest module is intentionally minimal. It provides a safe scaffold for future work on historical rebalancing, transaction costs, and portfolio analytics.
+## 9. APIs and dashboard visibility
 
-## Roadmap
+Useful API endpoints:
+- `/api/status`
+- `/api/audit`
+- `/api/ack`
+- `/api/runtime`
 
-- Add deterministic backtest module with transaction cost model
-- Add portfolio analytics (CAGR, max DD, turnover, exposure by sleeve)
-- Expand test coverage toward data loading, scheduler behavior, and execution integration
+The dashboard is the recommended first interface for operators.
 
-## Shared Data Integration
+## 10. Testing and quality
 
-시장 데이터는 [`m1nd0322/data`](https://github.com/m1nd0322/data) 공유 Parquet 저장소에서 우선 로드합니다.
+```bash
+pytest -q
+```
 
-**자동 배포**: `m1nd0322/data`의 GitHub Actions가 매일 08:00 KST에 시장 데이터를 갱신하고, 변경된 parquet 파일을 본 레포의 `data/` 디렉터리에 자동으로 push합니다.
+Coverage includes:
+- config validation
+- macro regime logic
+- portfolio scoring and cuts
+- notifier and scheduler behavior
+- trade review and execution safety
+- partial fill and replan flow
+- operator acknowledgement flow
+- runtime event persistence and resolution
+- strategy halt behavior
+- dashboard API behavior
 
-- 배포 파일: `data/us_etfs_macro.parquet`, `data/benchmarks.parquet`
-- 런타임 로딩: 공유 데이터에 있는 티커는 yfinance 호출 없이 즉시 로드, 없는 티커만 yfinance/FDR fallback
-- 부분 히트 지원: 1055개 KR ETF 중 공유 데이터에 있는 티커는 캐시에서 로드하고 나머지만 다운로드
-- 연동 파일: `druck/data.py`
+## 11. Shared data integration
+
+This project can load shared market data from [`m1nd0322/data`](https://github.com/m1nd0322/data).
+
+Current integration behavior:
+- shared parquet data is preferred when available
+- missing tickers fall back to yfinance/FDR loaders
+- cache support reduces repeated downloads
+
+## 12. Limitations
+
+- the current backtest is still minimal scaffolding
+- strategy halt logic is safety-oriented, not a complete portfolio risk research layer
+- Kiwoom live trading requires Windows-specific environment readiness
+
+## 13. Recommended reading order for deeper understanding
+
+1. `config.yaml`
+2. `druck/engine.py`
+3. `druck/trading.py`
+4. `druck/runtime.py`
+5. `druck/web/app.py`
+6. dashboard while running locally
 
 ## Disclaimer
 
-This repository is for research and engineering demonstration purposes only. It is not investment advice.
-
+This repository is for research and engineering demonstration purposes only.
+It is not investment advice.
