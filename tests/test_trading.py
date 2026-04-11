@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from druck.trading import TradePlanError, build_trade_plan, execute_trade_plan, review_live_trade
+from druck.trading import TradePlanError, build_trade_plan, execute_trade_plan, review_live_trade, run_rebalance_cycle
 
 
 class FakeBroker:
@@ -34,6 +34,11 @@ class PartialFillBroker(FakeBroker):
 class FailingBroker(FakeBroker):
     def place_order(self, ticker, qty, side, order_type="MKT"):
         raise RuntimeError("broker failure")
+
+
+class FundingBroker(FailingBroker):
+    def place_order(self, ticker, qty, side, order_type="MKT"):
+        raise RuntimeError("insufficient cash for order")
 
 
 def test_build_trade_plan_creates_sell_then_buy_orders():
@@ -92,3 +97,24 @@ def test_execute_trade_plan_raises_on_broker_error():
     plan = build_trade_plan(cfg, broker, pd.Series({"SPY": 0.0, "SHY": 1.0}))
     with pytest.raises(TradePlanError):
         execute_trade_plan(broker, plan)
+
+
+def test_execute_trade_plan_classifies_funding_error():
+    cfg = {"rebalance": {"min_trade_weight_diff": 0.01, "round_shares": True}}
+    broker = FundingBroker()
+    plan = build_trade_plan(cfg, broker, pd.Series({"SPY": 0.0, "SHY": 1.0}))
+    with pytest.raises(TradePlanError) as exc:
+        execute_trade_plan(broker, plan)
+    assert "insufficient cash" in str(exc.value)
+
+
+def test_run_rebalance_cycle_marks_replan_on_partial_fill():
+    cfg = {
+        "mode": {"enable_kiwoom": True, "dry_run": False},
+        "kiwoom": {"account_no": "123"},
+        "rebalance": {"min_trade_weight_diff": 0.01, "round_shares": True},
+    }
+    broker = PartialFillBroker()
+    result = run_rebalance_cycle(cfg, broker, pd.Series({"SPY": 0.0, "SHY": 1.0}), max_replans=0)
+    assert result.needs_replan is True
+    assert result.detail == "partial_fill_detected"

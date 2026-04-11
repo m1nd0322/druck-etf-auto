@@ -50,6 +50,13 @@ class LiveTradeReview:
     approved: bool
 
 
+@dataclass
+class RebalanceCycleResult:
+    executions: list[dict[str, Any]]
+    needs_replan: bool
+    detail: str
+
+
 def _normalize_positions(positions: dict[str, int]) -> dict[str, int]:
     out: dict[str, int] = {}
     for ticker, qty in positions.items():
@@ -61,6 +68,19 @@ def _normalize_positions(positions: dict[str, int]) -> dict[str, int]:
 
 def _broker_supports_live_trading(broker: Broker) -> bool:
     return hasattr(broker, "place_order") and hasattr(broker, "get_last_price")
+
+
+def _classify_broker_error(exc: Exception) -> str:
+    text = str(exc).lower()
+    if "market closed" in text:
+        return "market_closed"
+    if "slippage" in text:
+        return "slippage"
+    if "login" in text or "connect" in text:
+        return "connection"
+    if "insufficient" in text or "cash" in text:
+        return "funding"
+    return "broker_error"
 
 
 def build_trade_plan(cfg: dict, broker: Broker, target_weights: pd.Series, min_trade_weight_diff: float | None = None) -> TradePlan:
@@ -192,7 +212,35 @@ def execute_trade_plan(broker: Broker, plan: TradePlan, order_type: str = "MKT")
             if status == "partial_fill":
                 break
         except Exception as exc:
+            category = _classify_broker_error(exc)
             if audit_conn is not None:
-                log_trade_audit(audit_conn, "order_execution", ticker=order.ticker, side=order.side, qty=order.qty, status="error", detail=str(exc))
+                log_trade_audit(audit_conn, "order_execution", ticker=order.ticker, side=order.side, qty=order.qty, status=category, detail=str(exc))
             raise TradePlanError(f"Order execution failed for {order.ticker}: {exc}") from exc
     return executed
+
+
+def run_rebalance_cycle(cfg: dict, broker: Broker, target_weights: pd.Series, max_replans: int = 1) -> RebalanceCycleResult:
+    all_executions: list[dict[str, Any]] = []
+    needs_replan = False
+    detail = "completed"
+
+    for attempt in range(max_replans + 1):
+        plan = build_trade_plan(cfg, broker, target_weights)
+        review = review_live_trade(cfg, broker, plan)
+        if not review.approved:
+            raise TradePlanError(f"Live trade review failed: {review.checks}")
+
+        executions = execute_trade_plan(broker, plan)
+        all_executions.extend(executions)
+        if not executions:
+            break
+
+        if any(e["status"] == "partial_fill" for e in executions):
+            needs_replan = True
+            detail = "partial_fill_detected"
+            if attempt >= max_replans:
+                break
+            continue
+        break
+
+    return RebalanceCycleResult(executions=all_executions, needs_replan=needs_replan, detail=detail)

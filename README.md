@@ -98,8 +98,9 @@ python -m pip install -r requirements.txt
 2. Keep `mode.enable_kiwoom: true` but remain on `dry_run: true` first
 3. Review the generated order plan, warnings, and live review checks
 4. Check recent trade audit events in the dashboard or `/api/audit`
-5. Switch `dry_run` off only after report checks, account checks, and order review pass
-6. Monitor fills, audit events, and notifier output during the first live session
+5. Confirm broker-side failure classes during dry-run and first live session, for example market-closed, slippage, connection, or funding errors
+6. Switch `dry_run` off only after report checks, account checks, and order review pass
+7. Monitor fills, audit events, notifier output, and any partial-fill replan requests during the first live session
 
 ## Live Trading Setup (Kiwoom, Windows)
 
@@ -116,6 +117,15 @@ kiwoom:
 ```
 
 Start in dry-run mode, verify logs/reports, then switch to live only after controls are validated.
+
+## Live Rollout Recommendation
+
+- Stage 1: run report-only and backtest-only checks
+- Stage 2: enable Kiwoom with `dry_run: true` and inspect order intent plus audit logs
+- Stage 3: perform first live rollout with small exposure and active monitoring
+- Stage 4: only after stable fills and reconciled positions, allow normal-size live operation
+
+If a partial fill occurs, the system now marks the rebalance cycle for replan instead of blindly continuing. Treat that as an operator review point, not an automatic green light.
 
 ## Reproducibility and Config
 

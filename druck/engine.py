@@ -5,7 +5,7 @@ from .macro import compute_macro_regime, is_vix_spike
 from .portfolio import score_universe, allocate_weights, apply_risk_cuts
 from .report import save_report
 from .notifier import send_telegram
-from .trading import build_trade_plan, execute_trade_plan, review_live_trade, TradePlanError
+from .trading import build_trade_plan, review_live_trade, TradePlanError, run_rebalance_cycle
 
 def run_once(cfg: dict, do_trade: bool=False, broker=None):
     if do_trade and broker is None:
@@ -62,12 +62,14 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
     trade_plan = None
     trade_review = None
     executed_orders = []
+    rebalance_result = None
     if do_trade:
         trade_plan = build_trade_plan(cfg, broker, final_w)
         trade_review = review_live_trade(cfg, broker, trade_plan)
         if not trade_review.approved:
             raise TradePlanError(f"Live trade review failed: {trade_review.checks}")
-        executed_orders = execute_trade_plan(broker, trade_plan)
+        rebalance_result = run_rebalance_cycle(cfg, broker, final_w)
+        executed_orders = rebalance_result.executions
 
     msg = f"[Druck ETF] {regime.state} score={regime.risk_score:.2f} report={md_path}"
     if trade_plan is not None:
@@ -84,4 +86,5 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         'trade_plan': trade_plan,
         'trade_review': trade_review,
         'executed_orders': executed_orders,
+        'rebalance_result': rebalance_result,
     }
