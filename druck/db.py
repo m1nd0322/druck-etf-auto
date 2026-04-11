@@ -41,6 +41,17 @@ def init_db(path: str = "trade_log.db") -> sqlite3.Connection:
     )
     """
     )
+    c.execute(
+        """
+    CREATE TABLE IF NOT EXISTS runtime_events (
+        timestamp TEXT,
+        category TEXT,
+        message TEXT,
+        detail TEXT,
+        payload TEXT
+    )
+    """
+    )
     conn.commit()
     return conn
 
@@ -124,6 +135,40 @@ def fetch_operator_ack(conn: sqlite3.Connection, ack_type: str | None = None) ->
             "ack_type": row[1],
             "status": row[2],
             "note": row[3],
+        }
+        for row in rows
+    ]
+
+
+
+def log_runtime_event(
+    conn: sqlite3.Connection,
+    category: str,
+    message: str,
+    detail: str = "",
+    payload: str = "",
+):
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO runtime_events VALUES (?,?,?,?,?)",
+        (datetime.now().isoformat(), category, message, detail, payload),
+    )
+    conn.commit()
+
+
+
+def fetch_runtime_events(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    c = conn.cursor()
+    rows = c.execute(
+        "SELECT timestamp, category, message, detail, payload FROM runtime_events ORDER BY timestamp DESC"
+    ).fetchall()
+    return [
+        {
+            "timestamp": row[0],
+            "category": row[1],
+            "message": row[2],
+            "detail": row[3],
+            "payload": row[4],
         }
         for row in rows
     ]

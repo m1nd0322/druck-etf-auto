@@ -127,6 +127,8 @@ Start in dry-run mode, verify logs/reports, then switch to live only after contr
 
 If a partial fill occurs, the system now marks the rebalance cycle for replan instead of blindly continuing. Treat that as an operator review point, not an automatic green light.
 
+System/runtime errors are now intended to be reported without taking down the whole operating loop. By contrast, strategy danger signals and performance-degradation signals can halt trading while keeping the system alive for visibility and operator review.
+
 ## Reproducibility and Config
 
 - Main config: `config.yaml`
@@ -152,7 +154,8 @@ Added unit coverage focuses on:
 - data cache behavior
 - scheduler and notifier behavior
 - trade review and audit logging
-- web audit visibility
+- runtime guard classification and strategy halt behavior
+- web audit/runtime visibility
 
 ## Backtest Skeleton
 

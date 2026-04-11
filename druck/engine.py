@@ -8,7 +8,7 @@ from .notifier import send_telegram
 from .runtime import StrategyHaltError
 from .trading import build_trade_plan, review_live_trade, TradePlanError, run_rebalance_cycle
 
-def _detect_strategy_halt(cfg: dict, regime, selected: pd.DataFrame, final_w: pd.Series, cuts: list[dict]) -> tuple[bool, str, str]:
+def _detect_strategy_halt(cfg: dict, regime, selected: pd.DataFrame, final_w: pd.Series, cuts: list[dict], scores: pd.DataFrame) -> tuple[bool, str, str]:
     halt_cfg = cfg.get('strategy_halt', {})
     if not halt_cfg.get('enabled', False):
         return False, '', ''
@@ -29,6 +29,19 @@ def _detect_strategy_halt(cfg: dict, regime, selected: pd.DataFrame, final_w: pd
         negative_count = int((selected['momentum'] < 0).sum())
         if negative_count >= int(max_negative_momentum_assets):
             return True, 'negative_momentum_halt', f'{negative_count} selected assets have negative momentum'
+
+    perf_cfg = halt_cfg.get('performance', {})
+    if perf_cfg.get('enabled', False) and not scores.empty:
+        min_average_score = perf_cfg.get('min_average_score', None)
+        max_average_momentum = perf_cfg.get('max_average_momentum', None)
+        if min_average_score is not None:
+            avg_score = float(selected['score'].mean()) if 'score' in selected.columns and not selected.empty else 0.0
+            if avg_score <= float(min_average_score):
+                return True, 'score_degradation_halt', f'average selected score {avg_score:.4f} <= threshold {float(min_average_score):.4f}'
+        if max_average_momentum is not None:
+            avg_momentum = float(selected['momentum'].mean()) if 'momentum' in selected.columns and not selected.empty else 0.0
+            if avg_momentum <= float(max_average_momentum):
+                return True, 'momentum_degradation_halt', f'average selected momentum {avg_momentum:.4f} <= threshold {float(max_average_momentum):.4f}'
 
     if hasattr(cuts, 'empty'):
         cuts_present = not cuts.empty
@@ -96,7 +109,7 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         out.loc[cash, 'weight_target'] = 0.0
         out.loc[cash, 'weight_after_cuts'] = float(final_w[cash])
 
-    strategy_halt, halt_reason, halt_detail = _detect_strategy_halt(cfg, regime, selected, final_w, cuts)
+    strategy_halt, halt_reason, halt_detail = _detect_strategy_halt(cfg, regime, selected, final_w, cuts, scores)
 
     md_path = save_report('output', out.sort_values('weight_after_cuts', ascending=False), regime.details, cuts)
     trade_plan = None

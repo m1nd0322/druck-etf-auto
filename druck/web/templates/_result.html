@@ -85,6 +85,18 @@
 </section>
 {% endif %}
 
+{% if latest.strategy_halt %}
+<section class="section">
+  <h2>Strategy Halt</h2>
+  <div class="alert alert-error">
+    Trading halted: {{ latest.halt_reason }}
+    {% if latest.halt_detail %}
+      ({{ latest.halt_detail }})
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
 {% if latest.rebalance %}
 <section class="section">
   <h2>Rebalance Status</h2>

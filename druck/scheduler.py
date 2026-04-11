@@ -5,16 +5,19 @@ from apscheduler.triggers.cron import CronTrigger
 from .config import load_config
 from .engine import run_once
 from .notifier import send_telegram
-from .runtime import RuntimeEvent, run_guarded
+from .runtime import RuntimeEvent, db_runtime_reporter, run_guarded
 
 
 def _make_reporter(cfg: dict):
+    db_reporter = db_runtime_reporter()
+
     def reporter(event: RuntimeEvent):
         prefix = "[Druck Runtime]"
         msg = f"{prefix} {event.category}: {event.message}"
         if event.detail:
             msg += f" | {event.detail}"
         print(msg)
+        db_reporter(event)
         send_telegram(cfg, msg)
     return reporter
 

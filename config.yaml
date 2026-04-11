@@ -76,6 +76,10 @@ strategy_halt:
   max_cut_asset_ratio: 0.80
   min_risk_score: 0.20
   max_negative_momentum_assets: 3
+  performance:
+    enabled: true
+    min_average_score: 0.00
+    max_average_momentum: -0.02
 
 schedule:
   timezone: "Asia/Seoul"

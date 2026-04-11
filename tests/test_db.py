@@ -1,4 +1,4 @@
-from druck.db import fetch_trade_audit, init_db, log_trade_audit
+from druck.db import fetch_runtime_events, fetch_trade_audit, init_db, log_runtime_event, log_trade_audit
 
 
 def test_trade_audit_roundtrip(tmp_path):
@@ -8,3 +8,12 @@ def test_trade_audit_roundtrip(tmp_path):
     rows = fetch_trade_audit(conn)
     assert rows[0]["event_type"] == "order_intent"
     assert rows[0]["ticker"] == "SPY"
+
+
+def test_runtime_event_roundtrip(tmp_path):
+    db_path = tmp_path / "trade.db"
+    conn = init_db(str(db_path))
+    log_runtime_event(conn, category="system_error", message="boom", detail="trace")
+    rows = fetch_runtime_events(conn)
+    assert rows[0]["category"] == "system_error"
+    assert rows[0]["message"] == "boom"

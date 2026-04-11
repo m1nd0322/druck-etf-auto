@@ -32,3 +32,18 @@ def test_ack_api_creates_and_returns_rows(tmp_path, monkeypatch):
     assert fetch_resp.status_code == 200
     fetch_body = fetch_resp.json()
     assert fetch_body["rows"][0]["note"] == "reviewed"
+
+
+def test_runtime_api_returns_rows(tmp_path, monkeypatch):
+    db_path = tmp_path / "trade_log.db"
+    monkeypatch.chdir(tmp_path)
+    from druck.db import init_db, log_runtime_event
+
+    conn = init_db(str(db_path))
+    log_runtime_event(conn, category="strategy_halt", message="negative_momentum_halt", detail="3 assets negative")
+
+    client = TestClient(app)
+    resp = client.get("/api/runtime")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["rows"][0]["category"] == "strategy_halt"

@@ -33,6 +33,7 @@ Key improvements:
 - `druck/notifier.py` now handles Telegram delivery failures safely
 - `druck/kiwoom_broker.py` now uses explicit `Asia/Seoul` timezone handling
 - `druck/engine.py` now routes `do_trade=True` through a live-trade review before execution
+- runtime guard flow now distinguishes system errors from strategy halts so background operation can continue reporting even when a run fails
 
 ### Data loading
 - improved fallback logging when shared data loader import or load fails
@@ -70,6 +71,8 @@ Coverage includes:
 - cash rotation after risk cuts
 - backtest scaffold return shape
 - order-plan generation and live-trade review blocking
+- runtime event persistence and runtime API visibility
+- strategy halt behavior including performance-degradation halt
 
 ### Backtest scaffold
 Added:
@@ -96,6 +99,7 @@ Current scope:
 - dashboard now includes live workflow guidance
 - dashboard now exposes a backtest trigger
 - dashboard now shows order plan preview, warnings, and live review checks
+- dashboard now surfaces runtime events and strategy halt visibility
 - README now includes install, dry-run, and live transition guidance
 
 ## Verification

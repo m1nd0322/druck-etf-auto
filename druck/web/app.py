@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 
 from ..backtest import run_backtest
 from ..config import load_config
-from ..db import fetch_operator_ack, fetch_trade_audit, init_db, log_operator_ack
+from ..db import fetch_operator_ack, fetch_runtime_events, fetch_trade_audit, init_db, log_operator_ack
 from ..engine import run_once
 
 _HERE = Path(__file__).resolve().parent
@@ -93,6 +93,18 @@ def _read_operator_ack(limit: int = 20) -> list[dict[str, Any]]:
 
 
 
+def _read_runtime_events(limit: int = 20) -> list[dict[str, Any]]:
+    conn = _db_conn()
+    if conn is None:
+        return []
+    try:
+        rows = fetch_runtime_events(conn)
+        return rows[:limit]
+    finally:
+        conn.close()
+
+
+
 def _format_regime_result(result: dict) -> dict:
     regime = result["regime"]
     scores: pd.DataFrame = result["scores"]
@@ -162,6 +174,9 @@ def _format_regime_result(result: dict) -> dict:
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "trade_plan": trade_summary,
         "rebalance": rebalance_summary,
+        "strategy_halt": bool(result.get("strategy_halt", False)),
+        "halt_reason": result.get("halt_reason", ""),
+        "halt_detail": result.get("halt_detail", ""),
     }
 
 
@@ -174,6 +189,7 @@ async def dashboard(request: Request):
     reports = _list_reports()
     audit_rows = _read_trade_audit()
     ack_rows = _read_operator_ack()
+    runtime_rows = _read_runtime_events()
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -182,6 +198,7 @@ async def dashboard(request: Request):
             "reports": reports[:20],
             "audit_rows": audit_rows,
             "ack_rows": ack_rows,
+            "runtime_rows": runtime_rows,
         },
     )
 
@@ -242,6 +259,11 @@ async def api_ack():
     return {"rows": _read_operator_ack(limit=200)}
 
 
+@app.get("/api/runtime", response_class=JSONResponse)
+async def api_runtime():
+    return {"rows": _read_runtime_events(limit=200)}
+
+
 @app.post("/api/ack", response_class=JSONResponse)
 async def api_ack_create(payload: dict):
     ack_type = str(payload.get("ack_type", "")).strip()
@@ -292,4 +314,5 @@ async def api_status():
         "reports": _list_reports()[:10],
         "audit": _read_trade_audit(limit=20),
         "ack": _read_operator_ack(limit=20),
+        "runtime": _read_runtime_events(limit=20),
     }

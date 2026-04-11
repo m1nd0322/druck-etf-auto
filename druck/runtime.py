@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
+
+from .db import init_db, log_runtime_event
 
 
 class StrategyHaltError(RuntimeError):
@@ -36,6 +40,22 @@ def report_event(reporter: Reporter | None, event: RuntimeEvent) -> None:
         reporter(event)
     except Exception:
         pass
+
+
+def db_runtime_reporter(db_path: str = "trade_log.db") -> Reporter:
+    def reporter(event: RuntimeEvent):
+        conn = init_db(str(Path(db_path)))
+        try:
+            log_runtime_event(
+                conn,
+                category=event.category,
+                message=event.message,
+                detail=event.detail,
+                payload=json.dumps(event.payload, default=str),
+            )
+        finally:
+            conn.close()
+    return reporter
 
 
 def run_guarded(fn: Callable[[], dict[str, Any]], reporter: Reporter | None = None) -> RuntimeResult:
