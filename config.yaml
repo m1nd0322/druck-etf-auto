@@ -71,6 +71,12 @@ rebalance:
   round_shares: true
   commission_bps: 1.5
 
+strategy_halt:
+  enabled: true
+  max_cut_asset_ratio: 0.80
+  min_risk_score: 0.20
+  max_negative_momentum_assets: 3
+
 schedule:
   timezone: "Asia/Seoul"
   report_weekly:

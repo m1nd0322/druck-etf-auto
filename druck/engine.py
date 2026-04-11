@@ -5,7 +5,45 @@ from .macro import compute_macro_regime, is_vix_spike
 from .portfolio import score_universe, allocate_weights, apply_risk_cuts
 from .report import save_report
 from .notifier import send_telegram
+from .runtime import StrategyHaltError
 from .trading import build_trade_plan, review_live_trade, TradePlanError, run_rebalance_cycle
+
+def _detect_strategy_halt(cfg: dict, regime, selected: pd.DataFrame, final_w: pd.Series, cuts: list[dict]) -> tuple[bool, str, str]:
+    halt_cfg = cfg.get('strategy_halt', {})
+    if not halt_cfg.get('enabled', False):
+        return False, '', ''
+
+    max_cut_ratio = float(halt_cfg.get('max_cut_asset_ratio', 0.8))
+    min_risk_score = halt_cfg.get('min_risk_score', None)
+    max_negative_momentum_assets = halt_cfg.get('max_negative_momentum_assets', None)
+
+    cash_ticker = cfg['risk_cut']['action']['cash_us']
+    cash_weight = float(final_w.get(cash_ticker, 0.0)) if cash_ticker in final_w.index else 0.0
+    if cash_weight >= max_cut_ratio:
+        return True, 'cash_dominance_halt', f'cash weight {cash_weight:.2f} exceeds threshold {max_cut_ratio:.2f}'
+
+    if min_risk_score is not None and float(regime.risk_score) <= float(min_risk_score):
+        return True, 'macro_risk_halt', f'risk score {float(regime.risk_score):.2f} <= threshold {float(min_risk_score):.2f}'
+
+    if max_negative_momentum_assets is not None and not selected.empty and 'momentum' in selected.columns:
+        negative_count = int((selected['momentum'] < 0).sum())
+        if negative_count >= int(max_negative_momentum_assets):
+            return True, 'negative_momentum_halt', f'{negative_count} selected assets have negative momentum'
+
+    if hasattr(cuts, 'empty'):
+        cuts_present = not cuts.empty
+    else:
+        cuts_present = bool(cuts)
+    if cuts_present:
+        try:
+            cut_iter = cuts.to_dict(orient='records') if hasattr(cuts, 'to_dict') else cuts
+        except TypeError:
+            cut_iter = cuts
+        if all(bool(cut.get('cut_applied', True)) for cut in cut_iter):
+            return True, 'risk_cut_cluster_halt', 'all selected assets were affected by risk cut rules'
+
+    return False, '', ''
+
 
 def run_once(cfg: dict, do_trade: bool=False, broker=None):
     if do_trade and broker is None:
@@ -58,12 +96,16 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         out.loc[cash, 'weight_target'] = 0.0
         out.loc[cash, 'weight_after_cuts'] = float(final_w[cash])
 
+    strategy_halt, halt_reason, halt_detail = _detect_strategy_halt(cfg, regime, selected, final_w, cuts)
+
     md_path = save_report('output', out.sort_values('weight_after_cuts', ascending=False), regime.details, cuts)
     trade_plan = None
     trade_review = None
     executed_orders = []
     rebalance_result = None
     if do_trade:
+        if strategy_halt:
+            raise StrategyHaltError(f"Trading halted: {halt_reason} ({halt_detail})")
         trade_plan = build_trade_plan(cfg, broker, final_w)
         trade_review = review_live_trade(cfg, broker, trade_plan)
         if not trade_review.approved:
@@ -87,4 +129,7 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         'trade_review': trade_review,
         'executed_orders': executed_orders,
         'rebalance_result': rebalance_result,
+        'strategy_halt': strategy_halt,
+        'halt_reason': halt_reason,
+        'halt_detail': halt_detail,
     }

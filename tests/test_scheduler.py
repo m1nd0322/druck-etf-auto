@@ -27,7 +27,11 @@ def test_start_scheduler_registers_jobs(monkeypatch):
     monkeypatch.setattr("druck.scheduler.load_config", lambda *_args, **_kwargs: cfg)
     monkeypatch.setattr("druck.scheduler.BlockingScheduler", lambda timezone: scheduler)
     monkeypatch.setattr("druck.scheduler.CronTrigger", lambda **kwargs: kwargs)
+    monkeypatch.setattr("druck.scheduler.send_telegram", lambda cfg, msg: None)
     start_scheduler()
+
+    for job in scheduler.jobs:
+        job["func"]()
 
     assert scheduler.started is True
     assert len(scheduler.jobs) == 2
