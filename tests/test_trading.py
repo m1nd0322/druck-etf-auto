@@ -1,13 +1,14 @@
 import pandas as pd
 import pytest
 
-from druck.trading import TradePlanError, build_trade_plan, review_live_trade
+from druck.trading import TradePlanError, build_trade_plan, execute_trade_plan, review_live_trade
 
 
 class FakeBroker:
     def __init__(self):
         self.positions = {"SPY": 2}
         self.prices = {"SPY": 100.0, "SHY": 50.0}
+        self._db = None
 
     def get_positions(self):
         return self.positions
@@ -22,7 +23,17 @@ class FakeBroker:
         return self.prices.get(ticker, 0.0)
 
     def place_order(self, ticker, qty, side, order_type="MKT"):
-        return None
+        return {"status": "submitted", "qty_executed": qty, "detail": "ok"}
+
+
+class PartialFillBroker(FakeBroker):
+    def place_order(self, ticker, qty, side, order_type="MKT"):
+        return {"status": "partial_fill", "qty_executed": max(0, qty - 1), "detail": "partial"}
+
+
+class FailingBroker(FakeBroker):
+    def place_order(self, ticker, qty, side, order_type="MKT"):
+        raise RuntimeError("broker failure")
 
 
 def test_build_trade_plan_creates_sell_then_buy_orders():
@@ -64,3 +75,20 @@ def test_review_live_trade_blocks_until_live_prereqs_are_met():
     review = review_live_trade(cfg, broker, plan)
     assert review.approved is False
     assert any(check["ok"] is False for check in review.checks)
+
+
+def test_execute_trade_plan_stops_after_partial_fill():
+    cfg = {"rebalance": {"min_trade_weight_diff": 0.01, "round_shares": True}}
+    broker = PartialFillBroker()
+    plan = build_trade_plan(cfg, broker, pd.Series({"SPY": 0.0, "SHY": 1.0}))
+    executed = execute_trade_plan(broker, plan)
+    assert executed[0]["status"] == "partial_fill"
+    assert len(executed) == 1
+
+
+def test_execute_trade_plan_raises_on_broker_error():
+    cfg = {"rebalance": {"min_trade_weight_diff": 0.01, "round_shares": True}}
+    broker = FailingBroker()
+    plan = build_trade_plan(cfg, broker, pd.Series({"SPY": 0.0, "SHY": 1.0}))
+    with pytest.raises(TradePlanError):
+        execute_trade_plan(broker, plan)

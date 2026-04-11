@@ -1,11 +1,14 @@
 from __future__ import annotations
 import sqlite3
 from datetime import datetime
+from typing import Any
+
 
 def init_db(path: str = "trade_log.db") -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     c = conn.cursor()
-    c.execute("""
+    c.execute(
+        """
     CREATE TABLE IF NOT EXISTS fills (
         timestamp TEXT,
         code TEXT,
@@ -13,9 +16,24 @@ def init_db(path: str = "trade_log.db") -> sqlite3.Connection:
         price REAL,
         side TEXT
     )
-    """)
+    """
+    )
+    c.execute(
+        """
+    CREATE TABLE IF NOT EXISTS trade_audit (
+        timestamp TEXT,
+        event_type TEXT,
+        ticker TEXT,
+        side TEXT,
+        qty INTEGER,
+        status TEXT,
+        detail TEXT
+    )
+    """
+    )
     conn.commit()
     return conn
+
 
 def log_fill(conn: sqlite3.Connection, code: str, qty: int, price: float, side: str):
     c = conn.cursor()
@@ -24,3 +42,39 @@ def log_fill(conn: sqlite3.Connection, code: str, qty: int, price: float, side: 
         (datetime.now().isoformat(), code, int(qty), float(price), str(side)),
     )
     conn.commit()
+
+
+def log_trade_audit(
+    conn: sqlite3.Connection,
+    event_type: str,
+    ticker: str = "",
+    side: str = "",
+    qty: int = 0,
+    status: str = "info",
+    detail: str = "",
+):
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO trade_audit VALUES (?,?,?,?,?,?,?)",
+        (datetime.now().isoformat(), event_type, ticker, side, int(qty), status, detail),
+    )
+    conn.commit()
+
+
+def fetch_trade_audit(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    c = conn.cursor()
+    rows = c.execute(
+        "SELECT timestamp, event_type, ticker, side, qty, status, detail FROM trade_audit ORDER BY timestamp DESC"
+    ).fetchall()
+    return [
+        {
+            "timestamp": row[0],
+            "event_type": row[1],
+            "ticker": row[2],
+            "side": row[3],
+            "qty": row[4],
+            "status": row[5],
+            "detail": row[6],
+        }
+        for row in rows
+    ]

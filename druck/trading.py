@@ -6,6 +6,7 @@ from typing import Any
 import pandas as pd
 
 from .broker_base import Broker
+from .db import log_trade_audit
 
 
 class TradePlanError(RuntimeError):
@@ -20,6 +21,17 @@ class OrderIntent:
     target_weight: float
     last_price: float
     est_notional: float
+
+
+@dataclass
+class OrderExecutionResult:
+    ticker: str
+    side: str
+    qty_requested: int
+    qty_executed: int
+    est_notional: float
+    status: str
+    detail: str = ""
 
 
 @dataclass
@@ -149,14 +161,38 @@ def review_live_trade(cfg: dict, broker: Broker, plan: TradePlan) -> LiveTradeRe
 
 def execute_trade_plan(broker: Broker, plan: TradePlan, order_type: str = "MKT") -> list[dict[str, Any]]:
     executed: list[dict[str, Any]] = []
+    audit_conn = getattr(broker, "_db", None)
     for order in plan.orders:
-        broker.place_order(order.ticker, order.qty, order.side, order_type=order_type)
-        executed.append(
-            {
-                "ticker": order.ticker,
-                "side": order.side,
-                "qty": order.qty,
-                "est_notional": order.est_notional,
-            }
-        )
+        if audit_conn is not None:
+            log_trade_audit(audit_conn, "order_intent", ticker=order.ticker, side=order.side, qty=order.qty, status="planned", detail=f"est_notional={order.est_notional:.2f}")
+        try:
+            result = broker.place_order(order.ticker, order.qty, order.side, order_type=order_type)
+            executed_qty = order.qty
+            status = "submitted"
+            detail = ""
+            if isinstance(result, dict):
+                executed_qty = int(result.get("qty_executed", order.qty))
+                status = str(result.get("status", status))
+                detail = str(result.get("detail", ""))
+            if executed_qty < order.qty:
+                status = "partial_fill"
+                detail = detail or "Executed quantity lower than requested"
+            execution = OrderExecutionResult(
+                ticker=order.ticker,
+                side=order.side,
+                qty_requested=order.qty,
+                qty_executed=executed_qty,
+                est_notional=order.est_notional,
+                status=status,
+                detail=detail,
+            )
+            executed.append(execution.__dict__)
+            if audit_conn is not None:
+                log_trade_audit(audit_conn, "order_execution", ticker=order.ticker, side=order.side, qty=executed_qty, status=status, detail=detail)
+            if status == "partial_fill":
+                break
+        except Exception as exc:
+            if audit_conn is not None:
+                log_trade_audit(audit_conn, "order_execution", ticker=order.ticker, side=order.side, qty=order.qty, status="error", detail=str(exc))
+            raise TradePlanError(f"Order execution failed for {order.ticker}: {exc}") from exc
     return executed
