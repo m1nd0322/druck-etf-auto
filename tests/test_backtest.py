@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pandas as pd
 
 from druck.backtest import BacktestResult, run_backtest
@@ -37,6 +39,9 @@ def _base_cfg():
             "strict_point_in_time": True,
             "drop_incomplete_assets": True,
             "enforce_delist_exit": True,
+            "universe_timeline_path": "",
+            "volume_data_path": "",
+            "scenarios": {"enabled": True, "stress_return_shock": -0.05, "vol_multiplier": 1.5},
             "walkforward": {"enabled": True, "train_days": 252, "test_days": 42, "step_days": 42},
         },
     }
@@ -72,6 +77,8 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert "walkforward_windows" in result.analytics
     assert result.walkforward_summary is not None
     assert "factor_regime_attribution" in result.analytics
+    assert result.scenario_summary is not None
+    assert not result.scenario_summary.empty
 
 
 def test_run_backtest_counts_halts(monkeypatch):
@@ -101,7 +108,7 @@ def test_run_backtest_counts_halts(monkeypatch):
     assert result.summary["halt_count"] >= 1
 
 
-def test_run_backtest_tracks_slippage_impact_and_liquidity_costs(monkeypatch):
+def test_run_backtest_tracks_slippage_impact_and_liquidity_costs(monkeypatch, tmp_path):
     cfg = _base_cfg()
     idx = pd.date_range("2024-01-01", periods=420, freq="B")
     px = pd.DataFrame({
@@ -113,6 +120,10 @@ def test_run_backtest_tracks_slippage_impact_and_liquidity_costs(monkeypatch):
         "TLT": pd.Series([98 + i * 0.02 for i in range(420)], index=idx),
         "^VIX": pd.Series([16 + (i % 4) * 0.2 for i in range(420)], index=idx),
     })
+    volume = pd.DataFrame({ticker: [1_000_000 + i * 1000 for i in range(420)] for ticker in px.columns if ticker != "^VIX"}, index=idx)
+    volume_path = tmp_path / "volume.csv"
+    volume.to_csv(volume_path)
+    cfg["backtest"]["volume_data_path"] = str(volume_path)
     monkeypatch.setattr("druck.backtest.make_universe", lambda cfg: type("U", (), {"kr": [], "us": cfg["universe"]["us"]["tickers"]})())
     monkeypatch.setattr("druck.backtest.fetch_prices", lambda tickers, start, end, prefer='auto', cache_dir=None, use_cache=True: px[tickers])
     result = run_backtest(cfg)
@@ -121,7 +132,7 @@ def test_run_backtest_tracks_slippage_impact_and_liquidity_costs(monkeypatch):
     assert result.summary["total_liquidity_penalty"] >= 0.0
 
 
-def test_run_backtest_drops_incomplete_assets_and_marks_delisted(monkeypatch):
+def test_run_backtest_drops_incomplete_assets_and_marks_delisted(monkeypatch, tmp_path):
     cfg = _base_cfg()
     idx = pd.date_range("2024-01-01", periods=420, freq="B")
     late_series = pd.Series([200 + i * 0.2 for i in range(100)], index=idx[-100:])
@@ -137,6 +148,14 @@ def test_run_backtest_drops_incomplete_assets_and_marks_delisted(monkeypatch):
         "LATE": late_series,
         "DELIST": delisted_series,
     })
+    timeline = pd.DataFrame([
+        {"ticker": "SPY", "start_date": "2024-01-01"},
+        {"ticker": "LATE", "start_date": str(idx[-100].date())},
+        {"ticker": "DELIST", "start_date": "2024-01-01"},
+    ])
+    timeline_path = tmp_path / "timeline.csv"
+    timeline.to_csv(timeline_path, index=False)
+    cfg["backtest"]["universe_timeline_path"] = str(timeline_path)
     cfg["universe"]["us"]["tickers"].extend(["LATE", "DELIST"])
     monkeypatch.setattr("druck.backtest.make_universe", lambda cfg: type("U", (), {"kr": [], "us": cfg["universe"]["us"]["tickers"]})())
     monkeypatch.setattr("druck.backtest.fetch_prices", lambda tickers, start, end, prefer='auto', cache_dir=None, use_cache=True: px[tickers])
@@ -145,3 +164,4 @@ def test_run_backtest_drops_incomplete_assets_and_marks_delisted(monkeypatch):
         assert "LATE" not in weights
     assert "LATE" in result.summary["dropped_incomplete_assets"]
     assert "DELIST" in result.summary["delisted_assets"]
+    assert result.summary["timeline_applied"] is True

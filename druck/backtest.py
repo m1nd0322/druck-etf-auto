@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
 from .data import fetch_prices, get_date_range, make_universe
 from .engine import _detect_strategy_halt
-from .features import rolling_vol
 from .macro import compute_macro_regime, is_vix_spike
 from .portfolio import allocate_weights, apply_risk_cuts, score_universe
 
@@ -21,6 +21,7 @@ class BacktestResult:
     benchmark_curve: pd.Series | None = None
     analytics: dict[str, Any] | None = None
     walkforward_summary: pd.DataFrame | None = None
+    scenario_summary: pd.DataFrame | None = None
 
 
 @dataclass
@@ -36,6 +37,8 @@ class BacktestConfig:
     strict_point_in_time: bool = True
     drop_incomplete_assets: bool = True
     enforce_delist_exit: bool = True
+    universe_timeline_path: str = ""
+    volume_data_path: str = ""
 
 
 def _compute_summary(equity_curve: pd.Series, daily_returns: pd.Series, benchmark_curve: pd.Series | None = None) -> dict[str, Any]:
@@ -82,9 +85,51 @@ def _compute_summary(equity_curve: pd.Series, daily_returns: pd.Series, benchmar
     return out
 
 
-def _prepare_prices_for_backtest(prices: pd.DataFrame, cfg: BacktestConfig) -> tuple[pd.DataFrame, dict[str, Any]]:
-    px = prices.sort_index().copy()
-    diagnostics: dict[str, Any] = {"dropped_incomplete_assets": [], "delisted_assets": []}
+def _load_universe_timeline(path: str) -> pd.DataFrame | None:
+    if not path:
+        return None
+    p = Path(path)
+    if not p.exists():
+        return None
+    if p.suffix.lower() == ".csv":
+        return pd.read_csv(p)
+    if p.suffix.lower() in {".parquet", ".pq"}:
+        return pd.read_parquet(p)
+    return None
+
+
+def _load_volume_data(path: str) -> pd.DataFrame | None:
+    if not path:
+        return None
+    p = Path(path)
+    if not p.exists():
+        return None
+    if p.suffix.lower() == ".csv":
+        return pd.read_csv(p, index_col=0, parse_dates=True)
+    if p.suffix.lower() in {".parquet", ".pq"}:
+        return pd.read_parquet(p)
+    return None
+
+
+def _apply_universe_timeline(prices: pd.DataFrame, timeline: pd.DataFrame | None) -> pd.DataFrame:
+    if timeline is None or timeline.empty:
+        return prices
+    required = {"ticker", "start_date"}
+    if not required.issubset(set(timeline.columns)):
+        return prices
+    px = prices.copy()
+    for _, row in timeline.iterrows():
+        ticker = str(row["ticker"])
+        if ticker not in px.columns:
+            continue
+        start_date = pd.Timestamp(row["start_date"])
+        px.loc[px.index < start_date, ticker] = pd.NA
+    return px
+
+
+def _prepare_prices_for_backtest(prices: pd.DataFrame, cfg: BacktestConfig, timeline: pd.DataFrame | None) -> tuple[pd.DataFrame, dict[str, Any]]:
+    px = _apply_universe_timeline(prices.sort_index().copy(), timeline)
+    diagnostics: dict[str, Any] = {"dropped_incomplete_assets": [], "delisted_assets": [], "timeline_applied": timeline is not None}
 
     original_last_valid = {col: px[col].last_valid_index() for col in px.columns}
     if cfg.strict_point_in_time:
@@ -145,14 +190,26 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     return state, float(regime.risk_score), final_w, selected, cuts, strategy_halt, halt_reason, halt_detail
 
 
-def _compute_execution_cost(equity: float, turnover: float, selected: pd.DataFrame, bt_cfg: BacktestConfig) -> tuple[float, float, float, float, float]:
+def _estimate_adv_proxy(selected: pd.DataFrame, volume_slice: pd.DataFrame | None, dt: pd.Timestamp) -> float:
+    if volume_slice is not None and not volume_slice.empty:
+        current = volume_slice.loc[:dt].tail(20)
+        if not current.empty:
+            return float(current.mean().mean())
+    if not selected.empty and "vol" in selected.columns:
+        avg_vol = float(selected["vol"].mean()) if selected["vol"].notna().any() else 0.0
+        if avg_vol > 0:
+            return 1.0 / avg_vol
+    return 0.0
+
+
+def _compute_execution_cost(equity: float, turnover: float, selected: pd.DataFrame, bt_cfg: BacktestConfig, volume_slice: pd.DataFrame | None, dt: pd.Timestamp) -> tuple[float, float, float, float, float]:
     base_cost = equity * (turnover / 2.0) * (bt_cfg.transaction_cost_bps / 10000.0)
     slippage_cost = equity * (turnover / 2.0) * (bt_cfg.slippage_bps / 10000.0)
     impact_cost = equity * ((turnover / 2.0) ** 2) * (bt_cfg.market_impact_bps_per_turnover / 10000.0)
+    adv_proxy = _estimate_adv_proxy(selected, volume_slice, dt)
     liquidity_penalty = 0.0
-    if not selected.empty and "vol" in selected.columns:
-        avg_vol = float(selected["vol"].mean()) if selected["vol"].notna().any() else 0.0
-        liquidity_penalty = equity * (turnover / 2.0) * avg_vol * (bt_cfg.liquidity_vol_multiplier_bps / 10000.0)
+    if adv_proxy > 0:
+        liquidity_penalty = equity * (turnover / 2.0) * (bt_cfg.liquidity_vol_multiplier_bps / 10000.0) / max(adv_proxy, 1e-9)
     total_cost = base_cost + slippage_cost + impact_cost + liquidity_penalty
     return total_cost, base_cost, slippage_cost, impact_cost, liquidity_penalty
 
@@ -160,24 +217,37 @@ def _compute_execution_cost(equity: float, turnover: float, selected: pd.DataFra
 def _compute_factor_and_regime_attribution(rebalance_log: pd.DataFrame) -> dict[str, Any]:
     if rebalance_log.empty:
         return {"regime_counts": {}, "avg_risk_score": 0.0, "avg_positions": 0.0, "avg_momentum": 0.0, "avg_trend": 0.0, "avg_vol": 0.0}
-
-    regime_counts = rebalance_log["state"].value_counts().to_dict() if "state" in rebalance_log.columns else {}
-    avg_risk_score = float(rebalance_log["risk_score"].mean()) if "risk_score" in rebalance_log.columns else 0.0
-    avg_positions = float(rebalance_log["positions"].mean()) if "positions" in rebalance_log.columns else 0.0
-    avg_momentum = float(rebalance_log["selected_avg_momentum"].mean()) if "selected_avg_momentum" in rebalance_log.columns else 0.0
-    avg_trend = float(rebalance_log["selected_avg_trend"].mean()) if "selected_avg_trend" in rebalance_log.columns else 0.0
-    avg_vol = float(rebalance_log["selected_avg_vol"].mean()) if "selected_avg_vol" in rebalance_log.columns else 0.0
     return {
-        "regime_counts": regime_counts,
-        "avg_risk_score": avg_risk_score,
-        "avg_positions": avg_positions,
-        "avg_momentum": avg_momentum,
-        "avg_trend": avg_trend,
-        "avg_vol": avg_vol,
+        "regime_counts": rebalance_log["state"].value_counts().to_dict() if "state" in rebalance_log.columns else {},
+        "avg_risk_score": float(rebalance_log["risk_score"].mean()) if "risk_score" in rebalance_log.columns else 0.0,
+        "avg_positions": float(rebalance_log["positions"].mean()) if "positions" in rebalance_log.columns else 0.0,
+        "avg_momentum": float(rebalance_log["selected_avg_momentum"].mean()) if "selected_avg_momentum" in rebalance_log.columns else 0.0,
+        "avg_trend": float(rebalance_log["selected_avg_trend"].mean()) if "selected_avg_trend" in rebalance_log.columns else 0.0,
+        "avg_vol": float(rebalance_log["selected_avg_vol"].mean()) if "selected_avg_vol" in rebalance_log.columns else 0.0,
     }
 
 
-def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame, prep_diagnostics: dict[str, Any]) -> BacktestResult:
+def _compute_scenario_report(daily_returns: pd.Series, cfg: dict) -> pd.DataFrame:
+    scenario_cfg = cfg.get("backtest", {}).get("scenarios", {})
+    if not scenario_cfg.get("enabled", False) or daily_returns.empty:
+        return pd.DataFrame()
+    shock = float(scenario_cfg.get("stress_return_shock", -0.05))
+    vol_multiplier = float(scenario_cfg.get("vol_multiplier", 1.5))
+    stressed = daily_returns * vol_multiplier
+    stressed.iloc[:] = stressed.iloc[:] + shock / max(len(stressed), 1)
+    return pd.DataFrame(
+        [
+            {
+                "scenario": "return_shock_and_vol_up",
+                "avg_return": float(stressed.mean()),
+                "worst_day": float(stressed.min()),
+                "volatility": float(stressed.std() * (252 ** 0.5)) if len(stressed) > 1 else 0.0,
+            }
+        ]
+    )
+
+
+def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame, prep_diagnostics: dict[str, Any], volume_data: pd.DataFrame | None) -> BacktestResult:
     benchmark_curve = None
     if bt_cfg.benchmark_ticker in prices.columns:
         bench = prices[bt_cfg.benchmark_ticker].dropna()
@@ -212,7 +282,7 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
             new = target_weights.reindex(all_names).fillna(0.0)
             turnover = float((new - prev).abs().sum())
 
-        total_cost, base_cost, slippage_cost, impact_cost, liquidity_penalty = _compute_execution_cost(equity, turnover, selected, bt_cfg)
+        total_cost, base_cost, slippage_cost, impact_cost, liquidity_penalty = _compute_execution_cost(equity, turnover, selected, bt_cfg, volume_data, dt)
         equity -= total_cost
         current_weights = target_weights.copy()
 
@@ -272,6 +342,7 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
     summary["halt_count"] = int(rebalance_log["strategy_halt"].sum()) if not rebalance_log.empty else 0
     summary["dropped_incomplete_assets"] = prep_diagnostics.get("dropped_incomplete_assets", [])
     summary["delisted_assets"] = prep_diagnostics.get("delisted_assets", [])
+    summary["timeline_applied"] = prep_diagnostics.get("timeline_applied", False)
 
     factor_regime = _compute_factor_and_regime_attribution(rebalance_log)
     analytics = {
@@ -290,10 +361,11 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
         benchmark_curve=benchmark_curve,
         analytics=analytics,
         walkforward_summary=None,
+        scenario_summary=_compute_scenario_report(daily_returns_series, cfg),
     )
 
 
-def _run_walkforward(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame, prep_diagnostics: dict[str, Any]) -> pd.DataFrame:
+def _run_walkforward(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame, prep_diagnostics: dict[str, Any], volume_data: pd.DataFrame | None) -> pd.DataFrame:
     wf_cfg = cfg.get("backtest", {}).get("walkforward", {})
     if not wf_cfg.get("enabled", False):
         return pd.DataFrame()
@@ -309,7 +381,7 @@ def _run_walkforward(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame, pr
         test_start = idx[start_i]
         test_end = idx[min(start_i + test_days, len(idx) - 1)]
         segment = prices.loc[:test_end]
-        result = _run_single_backtest(cfg, bt_cfg, segment, prep_diagnostics)
+        result = _run_single_backtest(cfg, bt_cfg, segment, prep_diagnostics, volume_data)
         rows.append(
             {
                 "test_start": test_start,
@@ -338,6 +410,8 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
         strict_point_in_time=bool(cfg.get("backtest", {}).get("strict_point_in_time", True)),
         drop_incomplete_assets=bool(cfg.get("backtest", {}).get("drop_incomplete_assets", True)),
         enforce_delist_exit=bool(cfg.get("backtest", {}).get("enforce_delist_exit", True)),
+        universe_timeline_path=str(cfg.get("backtest", {}).get("universe_timeline_path", "")),
+        volume_data_path=str(cfg.get("backtest", {}).get("volume_data_path", "")),
     )
 
     start, end = get_date_range(cfg["data"]["lookback_years"])
@@ -347,13 +421,15 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
     cache_dir = cfg["data"].get("cache_dir", ".cache")
     use_cache = bool(cfg["data"].get("cache_csv", True))
     raw_prices = fetch_prices(tickers, start, end, prefer=prefer, cache_dir=cache_dir, use_cache=use_cache)
-    prices, prep_diagnostics = _prepare_prices_for_backtest(raw_prices, bt_cfg)
+    timeline = _load_universe_timeline(bt_cfg.universe_timeline_path)
+    volume_data = _load_volume_data(bt_cfg.volume_data_path)
+    prices, prep_diagnostics = _prepare_prices_for_backtest(raw_prices, bt_cfg, timeline)
 
     if prices.empty or len(prices) < bt_cfg.min_history_days + 5:
         raise RuntimeError("Not enough price history for backtest")
 
-    result = _run_single_backtest(cfg, bt_cfg, prices, prep_diagnostics)
-    walkforward = _run_walkforward(cfg, bt_cfg, prices, prep_diagnostics)
+    result = _run_single_backtest(cfg, bt_cfg, prices, prep_diagnostics, volume_data)
+    walkforward = _run_walkforward(cfg, bt_cfg, prices, prep_diagnostics, volume_data)
     result.walkforward_summary = walkforward
     if result.analytics is None:
         result.analytics = {}

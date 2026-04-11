@@ -71,6 +71,30 @@ rebalance:
   round_shares: true
   commission_bps: 1.5
 
+backtest:
+  rebalance_frequency: M
+  transaction_cost_bps: 1.5
+  slippage_bps: 3.0
+  market_impact_bps_per_turnover: 5.0
+  liquidity_vol_multiplier_bps: 2.0
+  starting_capital: 1.0
+  benchmark_ticker: SPY
+  min_history_days: 252
+  strict_point_in_time: true
+  drop_incomplete_assets: true
+  enforce_delist_exit: true
+  universe_timeline_path: ""
+  volume_data_path: ""
+  scenarios:
+    enabled: true
+    stress_return_shock: -0.05
+    vol_multiplier: 1.5
+  walkforward:
+    enabled: true
+    train_days: 252
+    test_days: 42
+    step_days: 42
+
 strategy_halt:
   enabled: true
   max_cut_asset_ratio: 0.80
