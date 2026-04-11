@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 
 from ..backtest import run_backtest
 from ..config import load_config
-from ..db import fetch_operator_ack, fetch_runtime_events, fetch_trade_audit, init_db, log_operator_ack
+from ..db import fetch_operator_ack, fetch_runtime_events, fetch_trade_audit, init_db, log_operator_ack, resolve_runtime_event
 from ..engine import run_once
 
 _HERE = Path(__file__).resolve().parent
@@ -262,6 +262,21 @@ async def api_ack():
 @app.get("/api/runtime", response_class=JSONResponse)
 async def api_runtime():
     return {"rows": _read_runtime_events(limit=200)}
+
+
+@app.post("/api/runtime/{event_id}/resolve", response_class=JSONResponse)
+async def api_runtime_resolve(event_id: int, payload: dict):
+    status = str(payload.get("status", "resolved")).strip() or "resolved"
+    note = str(payload.get("note", "")).strip()
+    db_path = _root() / "trade_log.db"
+    conn = init_db(str(db_path))
+    try:
+        resolve_runtime_event(conn, event_id=event_id, status=status, resolution_note=note)
+        rows = fetch_runtime_events(conn)
+        row = next((r for r in rows if int(r["id"]) == int(event_id)), None)
+        return {"ok": True, "row": row}
+    finally:
+        conn.close()
 
 
 @app.post("/api/ack", response_class=JSONResponse)

@@ -80,6 +80,9 @@ strategy_halt:
     enabled: true
     min_average_score: 0.00
     max_average_momentum: -0.02
+    recent_total_return: -0.03
+    benchmark_ticker: SPY
+    benchmark_relative_return: -0.05
 
 schedule:
   timezone: "Asia/Seoul"

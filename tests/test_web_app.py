@@ -47,3 +47,21 @@ def test_runtime_api_returns_rows(tmp_path, monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert body["rows"][0]["category"] == "strategy_halt"
+
+
+def test_runtime_api_resolves_row(tmp_path, monkeypatch):
+    db_path = tmp_path / "trade_log.db"
+    monkeypatch.chdir(tmp_path)
+    from druck.db import init_db, log_runtime_event
+
+    conn = init_db(str(db_path))
+    log_runtime_event(conn, category="system_error", message="boom", detail="trace")
+
+    client = TestClient(app)
+    rows = client.get("/api/runtime").json()["rows"]
+    event_id = rows[0]["id"]
+    resp = client.post(f"/api/runtime/{event_id}/resolve", json={"status": "resolved", "note": "reviewed"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["row"]["status"] == "resolved"

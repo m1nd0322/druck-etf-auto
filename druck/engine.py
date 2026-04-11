@@ -43,6 +43,20 @@ def _detect_strategy_halt(cfg: dict, regime, selected: pd.DataFrame, final_w: pd
             if avg_momentum <= float(max_average_momentum):
                 return True, 'momentum_degradation_halt', f'average selected momentum {avg_momentum:.4f} <= threshold {float(max_average_momentum):.4f}'
 
+        recent_total_return = perf_cfg.get('recent_total_return', None)
+        benchmark_relative_return = perf_cfg.get('benchmark_relative_return', None)
+        benchmark_ticker = perf_cfg.get('benchmark_ticker', 'SPY')
+        if recent_total_return is not None and hasattr(scores, 'index'):
+            avg_recent_return = float(selected['momentum'].mean()) if 'momentum' in selected.columns and not selected.empty else 0.0
+            if avg_recent_return <= float(recent_total_return):
+                return True, 'recent_return_halt', f'average selected recent return proxy {avg_recent_return:.4f} <= threshold {float(recent_total_return):.4f}'
+        if benchmark_relative_return is not None and benchmark_ticker in scores.index and not selected.empty:
+            benchmark_score = float(scores.loc[benchmark_ticker].get('momentum', 0.0)) if 'momentum' in scores.columns else 0.0
+            avg_selected_momentum = float(selected['momentum'].mean()) if 'momentum' in selected.columns else 0.0
+            relative_gap = avg_selected_momentum - benchmark_score
+            if relative_gap <= float(benchmark_relative_return):
+                return True, 'benchmark_underperformance_halt', f'selected momentum gap {relative_gap:.4f} <= threshold {float(benchmark_relative_return):.4f}'
+
     if hasattr(cuts, 'empty'):
         cuts_present = not cuts.empty
     else:

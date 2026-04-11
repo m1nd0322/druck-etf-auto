@@ -117,6 +117,8 @@
             <th>Category</th>
             <th>Message</th>
             <th>Detail</th>
+            <th>Status</th>
+            <th>Resolution</th>
           </tr>
         </thead>
         <tbody>
@@ -126,6 +128,14 @@
             <td>{{ row.category }}</td>
             <td>{{ row.message }}</td>
             <td>{{ row.detail }}</td>
+            <td>{{ row.status }}</td>
+            <td>
+              {% if row.status != 'resolved' %}
+              <button class="btn btn-secondary" onclick="resolveRuntimeEvent({{ row.id }})">Resolve</button>
+              {% else %}
+              {{ row.resolution_note }}
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -181,6 +191,21 @@ async function runReport() {
     btnText.textContent = 'Run Report';
     spinner.style.display = 'none';
   }
+}
+
+async function resolveRuntimeEvent(eventId) {
+  const note = window.prompt('Resolution note', 'reviewed and acknowledged') || '';
+  const resp = await fetch(`/api/runtime/${eventId}/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'resolved', note })
+  });
+  const body = await resp.json();
+  if (!resp.ok || !body.ok) {
+    alert(body.error || 'Failed to resolve runtime event');
+    return;
+  }
+  window.location.reload();
 }
 
 async function runBacktest() {

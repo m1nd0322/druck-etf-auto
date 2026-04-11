@@ -44,11 +44,14 @@ def init_db(path: str = "trade_log.db") -> sqlite3.Connection:
     c.execute(
         """
     CREATE TABLE IF NOT EXISTS runtime_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT,
         category TEXT,
         message TEXT,
         detail TEXT,
-        payload TEXT
+        payload TEXT,
+        status TEXT,
+        resolution_note TEXT
     )
     """
     )
@@ -147,11 +150,28 @@ def log_runtime_event(
     message: str,
     detail: str = "",
     payload: str = "",
+    status: str = "open",
+    resolution_note: str = "",
 ):
     c = conn.cursor()
     c.execute(
-        "INSERT INTO runtime_events VALUES (?,?,?,?,?)",
-        (datetime.now().isoformat(), category, message, detail, payload),
+        "INSERT INTO runtime_events (timestamp, category, message, detail, payload, status, resolution_note) VALUES (?,?,?,?,?,?,?)",
+        (datetime.now().isoformat(), category, message, detail, payload, status, resolution_note),
+    )
+    conn.commit()
+
+
+
+def resolve_runtime_event(
+    conn: sqlite3.Connection,
+    event_id: int,
+    status: str = "resolved",
+    resolution_note: str = "",
+):
+    c = conn.cursor()
+    c.execute(
+        "UPDATE runtime_events SET status=?, resolution_note=? WHERE id=?",
+        (status, resolution_note, int(event_id)),
     )
     conn.commit()
 
@@ -160,15 +180,18 @@ def log_runtime_event(
 def fetch_runtime_events(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     c = conn.cursor()
     rows = c.execute(
-        "SELECT timestamp, category, message, detail, payload FROM runtime_events ORDER BY timestamp DESC"
+        "SELECT id, timestamp, category, message, detail, payload, status, resolution_note FROM runtime_events ORDER BY timestamp DESC"
     ).fetchall()
     return [
         {
-            "timestamp": row[0],
-            "category": row[1],
-            "message": row[2],
-            "detail": row[3],
-            "payload": row[4],
+            "id": row[0],
+            "timestamp": row[1],
+            "category": row[2],
+            "message": row[3],
+            "detail": row[4],
+            "payload": row[5],
+            "status": row[6],
+            "resolution_note": row[7],
         }
         for row in rows
     ]
