@@ -156,8 +156,8 @@ python run_backtest.py
 
 Important note:
 - the backtest engine is now materially stronger than the original scaffold
-- it supports periodic rebalancing, turnover, transaction cost impact, benchmark comparison, and core analytics
-- it is still not a full multi-asset institutional research platform with slippage models, corporate actions research controls, and exchange-microstructure realism
+- it supports periodic rebalancing, turnover, transaction cost impact, slippage and market-impact cost modeling, benchmark comparison, point-in-time defensive handling, walk-forward evaluation, and core analytics
+- it is still not a full multi-asset institutional research platform with corporate actions research controls, delisting realism, and exchange-microstructure-perfect execution modeling
 
 ## 5. Understand key safety controls
 

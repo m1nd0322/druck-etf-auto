@@ -19,14 +19,20 @@ class BacktestResult:
     daily_returns: pd.Series
     benchmark_curve: pd.Series | None = None
     analytics: dict[str, Any] | None = None
+    walkforward_summary: pd.DataFrame | None = None
 
 
 @dataclass
 class BacktestConfig:
     rebalance_frequency: str = "M"
     transaction_cost_bps: float = 1.5
+    slippage_bps: float = 3.0
+    market_impact_bps_per_turnover: float = 5.0
     starting_capital: float = 1.0
     benchmark_ticker: str = "SPY"
+    min_history_days: int = 252
+    strict_point_in_time: bool = True
+    drop_incomplete_assets: bool = True
 
 
 def _compute_summary(equity_curve: pd.Series, daily_returns: pd.Series, benchmark_curve: pd.Series | None = None) -> dict[str, Any]:
@@ -39,6 +45,8 @@ def _compute_summary(equity_curve: pd.Series, daily_returns: pd.Series, benchmar
             "volatility": 0.0,
             "cagr": 0.0,
             "sharpe": 0.0,
+            "sortino": 0.0,
+            "calmar": 0.0,
         }
 
     peak = equity_curve.cummax()
@@ -47,20 +55,47 @@ def _compute_summary(equity_curve: pd.Series, daily_returns: pd.Series, benchmar
     cagr = float((equity_curve.iloc[-1] / equity_curve.iloc[0]) ** (1 / years) - 1.0)
     vol = float(daily_returns.std() * (252 ** 0.5)) if not daily_returns.empty else 0.0
     sharpe = float((daily_returns.mean() / daily_returns.std()) * (252 ** 0.5)) if not daily_returns.empty and daily_returns.std() > 0 else 0.0
+    downside = daily_returns[daily_returns < 0]
+    downside_vol = float(downside.std() * (252 ** 0.5)) if not downside.empty else 0.0
+    sortino = float((daily_returns.mean() * 252) / downside_vol) if downside_vol > 0 else 0.0
+    max_dd = float(drawdown.min())
+    calmar = float(cagr / abs(max_dd)) if max_dd < 0 else 0.0
 
     out = {
         "start_value": float(equity_curve.iloc[0]),
         "end_value": float(equity_curve.iloc[-1]),
         "total_return": float(equity_curve.iloc[-1] / equity_curve.iloc[0] - 1.0),
-        "max_drawdown": float(drawdown.min()),
+        "max_drawdown": max_dd,
         "volatility": vol,
         "cagr": cagr,
         "sharpe": sharpe,
+        "sortino": sortino,
+        "calmar": calmar,
     }
     if benchmark_curve is not None and not benchmark_curve.empty:
-        out["benchmark_total_return"] = float(benchmark_curve.iloc[-1] / benchmark_curve.iloc[0] - 1.0)
-        out["active_return"] = out["total_return"] - out["benchmark_total_return"]
+        benchmark_total_return = float(benchmark_curve.iloc[-1] / benchmark_curve.iloc[0] - 1.0)
+        out["benchmark_total_return"] = benchmark_total_return
+        out["active_return"] = out["total_return"] - benchmark_total_return
     return out
+
+
+def _prepare_prices_for_backtest(prices: pd.DataFrame, cfg: BacktestConfig) -> pd.DataFrame:
+    px = prices.sort_index().copy()
+    if cfg.strict_point_in_time:
+        px = px.ffill(limit=5)
+    else:
+        px = px.ffill()
+    if cfg.drop_incomplete_assets:
+        keep_cols = []
+        for col in px.columns:
+            first_valid = px[col].first_valid_index()
+            if first_valid is None:
+                continue
+            hist_len = int(px.loc[first_valid:, col].dropna().shape[0])
+            if hist_len >= cfg.min_history_days:
+                keep_cols.append(col)
+        px = px[keep_cols]
+    return px.dropna(how="all")
 
 
 def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.Series, pd.DataFrame, pd.DataFrame, bool, str, str]:
@@ -92,26 +127,15 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     return state, float(regime.risk_score), final_w, selected, cuts, strategy_halt, halt_reason, halt_detail
 
 
-def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestResult:
-    bt_cfg = BacktestConfig(
-        rebalance_frequency=str(cfg.get("backtest", {}).get("rebalance_frequency", "M")),
-        transaction_cost_bps=float(cfg.get("backtest", {}).get("transaction_cost_bps", cfg.get("rebalance", {}).get("commission_bps", 1.5))),
-        starting_capital=float(starting_capital if starting_capital is not None else cfg.get("backtest", {}).get("starting_capital", 1.0)),
-        benchmark_ticker=str(cfg.get("backtest", {}).get("benchmark_ticker", "SPY")),
-    )
+def _compute_execution_cost(equity: float, turnover: float, bt_cfg: BacktestConfig) -> tuple[float, float, float, float]:
+    base_cost = equity * (turnover / 2.0) * (bt_cfg.transaction_cost_bps / 10000.0)
+    slippage_cost = equity * (turnover / 2.0) * (bt_cfg.slippage_bps / 10000.0)
+    impact_cost = equity * ((turnover / 2.0) ** 2) * (bt_cfg.market_impact_bps_per_turnover / 10000.0)
+    total_cost = base_cost + slippage_cost + impact_cost
+    return total_cost, base_cost, slippage_cost, impact_cost
 
-    start, end = get_date_range(cfg["data"]["lookback_years"])
-    u = make_universe(cfg)
-    tickers = list(dict.fromkeys(u.kr + u.us))
-    prefer = cfg["data"].get("price_provider", "auto")
-    cache_dir = cfg["data"].get("cache_dir", ".cache")
-    use_cache = bool(cfg["data"].get("cache_csv", True))
-    prices = fetch_prices(tickers, start, end, prefer=prefer, cache_dir=cache_dir, use_cache=use_cache).sort_index()
-    prices = prices.ffill().dropna(how="all")
 
-    if prices.empty or len(prices) < 260:
-        raise RuntimeError("Not enough price history for backtest")
-
+def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame) -> BacktestResult:
     benchmark_curve = None
     if bt_cfg.benchmark_ticker in prices.columns:
         bench = prices[bt_cfg.benchmark_ticker].dropna()
@@ -120,7 +144,7 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
 
     freq = "ME" if bt_cfg.rebalance_frequency == "M" else bt_cfg.rebalance_frequency
     rebal_dates = prices.resample(freq).last().index
-    rebal_dates = [d for d in rebal_dates if d in prices.index and prices.index.get_loc(d) >= 252]
+    rebal_dates = [d for d in rebal_dates if d in prices.index and prices.index.get_loc(d) >= bt_cfg.min_history_days]
     if not rebal_dates:
         rebal_dates = [prices.index[-1]]
 
@@ -146,8 +170,8 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
             new = target_weights.reindex(all_names).fillna(0.0)
             turnover = float((new - prev).abs().sum())
 
-        cost = equity * (turnover / 2.0) * (bt_cfg.transaction_cost_bps / 10000.0)
-        equity -= cost
+        total_cost, base_cost, slippage_cost, impact_cost = _compute_execution_cost(equity, turnover, bt_cfg)
+        equity -= total_cost
         current_weights = target_weights.copy()
 
         next_dt = rebal_dates[i + 1] if i + 1 < len(rebal_dates) else prices.index[-1]
@@ -174,7 +198,10 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
                 "risk_score": risk_score,
                 "positions": int((current_weights > 0).sum()),
                 "turnover": turnover,
-                "cost": cost,
+                "cost": total_cost,
+                "base_cost": base_cost,
+                "slippage_cost": slippage_cost,
+                "impact_cost": impact_cost,
                 "strategy_halt": strategy_halt,
                 "halt_reason": halt_reason,
                 "halt_detail": halt_detail,
@@ -193,12 +220,15 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
     summary["rebalances"] = int(len(rebalance_log))
     summary["avg_turnover"] = float(rebalance_log["turnover"].mean()) if not rebalance_log.empty else 0.0
     summary["total_cost"] = float(rebalance_log["cost"].sum()) if not rebalance_log.empty else 0.0
+    summary["total_slippage_cost"] = float(rebalance_log["slippage_cost"].sum()) if not rebalance_log.empty else 0.0
+    summary["total_impact_cost"] = float(rebalance_log["impact_cost"].sum()) if not rebalance_log.empty else 0.0
     summary["halt_count"] = int(rebalance_log["strategy_halt"].sum()) if not rebalance_log.empty else 0
 
     analytics = {
         "worst_day": float(daily_returns_series.min()) if not daily_returns_series.empty else 0.0,
         "best_day": float(daily_returns_series.max()) if not daily_returns_series.empty else 0.0,
         "avg_daily_return": float(daily_returns_series.mean()) if not daily_returns_series.empty else 0.0,
+        "win_rate": float((daily_returns_series > 0).mean()) if not daily_returns_series.empty else 0.0,
     }
 
     return BacktestResult(
@@ -208,4 +238,74 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
         daily_returns=daily_returns_series,
         benchmark_curve=benchmark_curve,
         analytics=analytics,
+        walkforward_summary=None,
     )
+
+
+def _run_walkforward(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame) -> pd.DataFrame:
+    wf_cfg = cfg.get("backtest", {}).get("walkforward", {})
+    if not wf_cfg.get("enabled", False):
+        return pd.DataFrame()
+
+    train_days = int(wf_cfg.get("train_days", 252))
+    test_days = int(wf_cfg.get("test_days", 63))
+    step_days = int(wf_cfg.get("step_days", test_days))
+    rows: list[dict[str, Any]] = []
+    idx = prices.index
+
+    start_i = train_days
+    while start_i + test_days < len(idx):
+        test_start = idx[start_i]
+        test_end = idx[min(start_i + test_days, len(idx) - 1)]
+        segment = prices.loc[:test_end]
+        result = _run_single_backtest(cfg, bt_cfg, segment)
+        rows.append(
+            {
+                "test_start": test_start,
+                "test_end": test_end,
+                "total_return": result.summary.get("total_return", 0.0),
+                "cagr": result.summary.get("cagr", 0.0),
+                "sharpe": result.summary.get("sharpe", 0.0),
+                "max_drawdown": result.summary.get("max_drawdown", 0.0),
+                "halt_count": result.summary.get("halt_count", 0),
+            }
+        )
+        start_i += step_days
+    return pd.DataFrame(rows)
+
+
+def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestResult:
+    bt_cfg = BacktestConfig(
+        rebalance_frequency=str(cfg.get("backtest", {}).get("rebalance_frequency", "M")),
+        transaction_cost_bps=float(cfg.get("backtest", {}).get("transaction_cost_bps", cfg.get("rebalance", {}).get("commission_bps", 1.5))),
+        slippage_bps=float(cfg.get("backtest", {}).get("slippage_bps", 3.0)),
+        market_impact_bps_per_turnover=float(cfg.get("backtest", {}).get("market_impact_bps_per_turnover", 5.0)),
+        starting_capital=float(starting_capital if starting_capital is not None else cfg.get("backtest", {}).get("starting_capital", 1.0)),
+        benchmark_ticker=str(cfg.get("backtest", {}).get("benchmark_ticker", "SPY")),
+        min_history_days=int(cfg.get("backtest", {}).get("min_history_days", 252)),
+        strict_point_in_time=bool(cfg.get("backtest", {}).get("strict_point_in_time", True)),
+        drop_incomplete_assets=bool(cfg.get("backtest", {}).get("drop_incomplete_assets", True)),
+    )
+
+    start, end = get_date_range(cfg["data"]["lookback_years"])
+    u = make_universe(cfg)
+    tickers = list(dict.fromkeys(u.kr + u.us))
+    prefer = cfg["data"].get("price_provider", "auto")
+    cache_dir = cfg["data"].get("cache_dir", ".cache")
+    use_cache = bool(cfg["data"].get("cache_csv", True))
+    raw_prices = fetch_prices(tickers, start, end, prefer=prefer, cache_dir=cache_dir, use_cache=use_cache)
+    prices = _prepare_prices_for_backtest(raw_prices, bt_cfg)
+
+    if prices.empty or len(prices) < bt_cfg.min_history_days + 5:
+        raise RuntimeError("Not enough price history for backtest")
+
+    result = _run_single_backtest(cfg, bt_cfg, prices)
+    walkforward = _run_walkforward(cfg, bt_cfg, prices)
+    result.walkforward_summary = walkforward
+    if result.analytics is None:
+        result.analytics = {}
+    result.analytics["walkforward_windows"] = int(len(walkforward)) if not walkforward.empty else 0
+    if not walkforward.empty:
+        result.analytics["walkforward_avg_return"] = float(walkforward["total_return"].mean())
+        result.analytics["walkforward_avg_sharpe"] = float(walkforward["sharpe"].mean())
+    return result

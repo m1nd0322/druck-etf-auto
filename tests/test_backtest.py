@@ -25,21 +25,32 @@ def _base_cfg():
         },
         "rebalance": {"min_trade_weight_diff": 0.01, "round_shares": True, "commission_bps": 1.5},
         "strategy_halt": {"enabled": False},
-        "backtest": {"rebalance_frequency": "M", "transaction_cost_bps": 1.5, "starting_capital": 1.0, "benchmark_ticker": "SPY"},
+        "backtest": {
+            "rebalance_frequency": "M",
+            "transaction_cost_bps": 1.5,
+            "slippage_bps": 3.0,
+            "market_impact_bps_per_turnover": 5.0,
+            "starting_capital": 1.0,
+            "benchmark_ticker": "SPY",
+            "min_history_days": 252,
+            "strict_point_in_time": True,
+            "drop_incomplete_assets": True,
+            "walkforward": {"enabled": True, "train_days": 252, "test_days": 42, "step_days": 42},
+        },
     }
 
 
 def test_run_backtest_returns_expected_shape(monkeypatch):
     cfg = _base_cfg()
-    idx = pd.date_range("2024-01-01", periods=320, freq="B")
+    idx = pd.date_range("2024-01-01", periods=420, freq="B")
     px = pd.DataFrame({
-        "SPY": pd.Series([100 + i * 0.2 for i in range(320)], index=idx),
-        "SHY": pd.Series([100 + i * 0.01 for i in range(320)], index=idx),
-        "UUP": pd.Series([100 - i * 0.02 for i in range(320)], index=idx),
-        "HYG": pd.Series([100 + i * 0.1 for i in range(320)], index=idx),
-        "IEF": pd.Series([100 + i * 0.03 for i in range(320)], index=idx),
-        "TLT": pd.Series([100 + i * 0.02 for i in range(320)], index=idx),
-        "^VIX": pd.Series([15 + (i % 3) * 0.1 for i in range(320)], index=idx),
+        "SPY": pd.Series([100 + i * 0.2 for i in range(420)], index=idx),
+        "SHY": pd.Series([100 + i * 0.01 for i in range(420)], index=idx),
+        "UUP": pd.Series([100 - i * 0.02 for i in range(420)], index=idx),
+        "HYG": pd.Series([100 + i * 0.1 for i in range(420)], index=idx),
+        "IEF": pd.Series([100 + i * 0.03 for i in range(420)], index=idx),
+        "TLT": pd.Series([100 + i * 0.02 for i in range(420)], index=idx),
+        "^VIX": pd.Series([15 + (i % 3) * 0.1 for i in range(420)], index=idx),
     })
 
     monkeypatch.setattr("druck.backtest.make_universe", lambda cfg: type("U", (), {"kr": [], "us": cfg["universe"]["us"]["tickers"]})())
@@ -51,9 +62,13 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert "total_return" in result.summary
     assert "cagr" in result.summary
     assert "sharpe" in result.summary
+    assert "sortino" in result.summary
+    assert "calmar" in result.summary
     assert result.summary["rebalances"] >= 1
     assert result.benchmark_curve is not None
     assert result.analytics is not None
+    assert "walkforward_windows" in result.analytics
+    assert result.walkforward_summary is not None
 
 
 def test_run_backtest_counts_halts(monkeypatch):
@@ -65,15 +80,15 @@ def test_run_backtest_counts_halts(monkeypatch):
         "max_negative_momentum_assets": 1,
         "performance": {"enabled": True, "min_average_score": 1.0, "max_average_momentum": 1.0, "recent_total_return": 1.0, "benchmark_ticker": "SPY", "benchmark_relative_return": 1.0},
     }
-    idx = pd.date_range("2024-01-01", periods=320, freq="B")
+    idx = pd.date_range("2024-01-01", periods=420, freq="B")
     px = pd.DataFrame({
-        "SPY": pd.Series([100 + i * 0.01 for i in range(320)], index=idx),
-        "SHY": pd.Series([100.0] * 320, index=idx),
-        "UUP": pd.Series([100.0] * 320, index=idx),
-        "HYG": pd.Series([100.0] * 320, index=idx),
-        "IEF": pd.Series([100.0] * 320, index=idx),
-        "TLT": pd.Series([100.0] * 320, index=idx),
-        "^VIX": pd.Series([18.0] * 320, index=idx),
+        "SPY": pd.Series([100 + i * 0.01 for i in range(420)], index=idx),
+        "SHY": pd.Series([100.0] * 420, index=idx),
+        "UUP": pd.Series([100.0] * 420, index=idx),
+        "HYG": pd.Series([100.0] * 420, index=idx),
+        "IEF": pd.Series([100.0] * 420, index=idx),
+        "TLT": pd.Series([100.0] * 420, index=idx),
+        "^VIX": pd.Series([18.0] * 420, index=idx),
     })
 
     monkeypatch.setattr("druck.backtest.make_universe", lambda cfg: type("U", (), {"kr": [], "us": cfg["universe"]["us"]["tickers"]})())
@@ -81,3 +96,44 @@ def test_run_backtest_counts_halts(monkeypatch):
 
     result = run_backtest(cfg)
     assert result.summary["halt_count"] >= 1
+
+
+def test_run_backtest_tracks_slippage_and_impact_costs(monkeypatch):
+    cfg = _base_cfg()
+    idx = pd.date_range("2024-01-01", periods=420, freq="B")
+    px = pd.DataFrame({
+        "SPY": pd.Series([100 + i * 0.2 for i in range(420)], index=idx),
+        "SHY": pd.Series([90 + i * 0.05 for i in range(420)], index=idx),
+        "UUP": pd.Series([110 - i * 0.03 for i in range(420)], index=idx),
+        "HYG": pd.Series([95 + i * 0.08 for i in range(420)], index=idx),
+        "IEF": pd.Series([100 + i * 0.01 for i in range(420)], index=idx),
+        "TLT": pd.Series([98 + i * 0.02 for i in range(420)], index=idx),
+        "^VIX": pd.Series([16 + (i % 4) * 0.2 for i in range(420)], index=idx),
+    })
+    monkeypatch.setattr("druck.backtest.make_universe", lambda cfg: type("U", (), {"kr": [], "us": cfg["universe"]["us"]["tickers"]})())
+    monkeypatch.setattr("druck.backtest.fetch_prices", lambda tickers, start, end, prefer='auto', cache_dir=None, use_cache=True: px[tickers])
+    result = run_backtest(cfg)
+    assert result.summary["total_slippage_cost"] >= 0.0
+    assert result.summary["total_impact_cost"] >= 0.0
+
+
+def test_run_backtest_drops_incomplete_assets_in_strict_pit(monkeypatch):
+    cfg = _base_cfg()
+    idx = pd.date_range("2024-01-01", periods=420, freq="B")
+    late_series = pd.Series([200 + i * 0.2 for i in range(100)], index=idx[-100:])
+    px = pd.DataFrame({
+        "SPY": pd.Series([100 + i * 0.2 for i in range(420)], index=idx),
+        "SHY": pd.Series([100.0] * 420, index=idx),
+        "UUP": pd.Series([100.0] * 420, index=idx),
+        "HYG": pd.Series([100.0] * 420, index=idx),
+        "IEF": pd.Series([100.0] * 420, index=idx),
+        "TLT": pd.Series([100.0] * 420, index=idx),
+        "^VIX": pd.Series([18.0] * 420, index=idx),
+        "LATE": late_series,
+    })
+    cfg["universe"]["us"]["tickers"].append("LATE")
+    monkeypatch.setattr("druck.backtest.make_universe", lambda cfg: type("U", (), {"kr": [], "us": cfg["universe"]["us"]["tickers"]})())
+    monkeypatch.setattr("druck.backtest.fetch_prices", lambda tickers, start, end, prefer='auto', cache_dir=None, use_cache=True: px[tickers])
+    result = run_backtest(cfg)
+    for weights in result.rebalance_log["weights"]:
+        assert "LATE" not in weights
