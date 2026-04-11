@@ -96,9 +96,10 @@ python -m pip install -r requirements.txt
 
 1. Confirm Kiwoom credentials and Windows environment readiness
 2. Keep `mode.enable_kiwoom: true` but remain on `dry_run: true` first
-3. Review the generated order plan and risk-cut outputs
-4. Switch `dry_run` off only after report checks, account checks, and order review pass
-5. Monitor fills and notifier output during the first live session
+3. Review the generated order plan, warnings, and live review checks
+4. Check recent trade audit events in the dashboard or `/api/audit`
+5. Switch `dry_run` off only after report checks, account checks, and order review pass
+6. Monitor fills, audit events, and notifier output during the first live session
 
 ## Live Trading Setup (Kiwoom, Windows)
 
@@ -138,6 +139,10 @@ Added unit coverage focuses on:
 - config validation
 - portfolio risk-cut behavior
 - backtest scaffolding behavior
+- data cache behavior
+- scheduler and notifier behavior
+- trade review and audit logging
+- web audit visibility
 
 ## Backtest Skeleton
 

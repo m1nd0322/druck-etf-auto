@@ -11,4 +11,5 @@ uvicorn[standard]
 jinja2
 tabulate
 pytest
+httpx
 PyQt5; platform_system=="Windows"

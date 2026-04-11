@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import os
-import json
+import sqlite3
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -13,27 +12,29 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from ..config import load_config
-from ..engine import run_once
 from ..backtest import run_backtest
+from ..config import load_config
+from ..db import fetch_trade_audit
+from ..engine import run_once
 
 _HERE = Path(__file__).resolve().parent
-_ROOT = Path.cwd()
+
+
+def _root() -> Path:
+    return Path.cwd()
 
 app = FastAPI(title="Druck ETF Auto")
 app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
 
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
 
 def _load_cfg() -> dict:
-    return load_config(_ROOT / "config.yaml", _ROOT / "config.local.yaml")
+    root = _root()
+    return load_config(root / "config.yaml", root / "config.local.yaml")
 
 
 def _list_reports() -> List[Dict[str, Any]]:
-    out_dir = _ROOT / "output"
+    out_dir = _root() / "output"
     if not out_dir.exists():
         return []
     reports = []
@@ -49,21 +50,31 @@ def _list_reports() -> List[Dict[str, Any]]:
 
 
 def _read_report(filename: str) -> str | None:
-    p = _ROOT / "output" / filename
+    p = _root() / "output" / filename
     if p.exists() and p.suffix == ".md":
         return p.read_text(encoding="utf-8")
     return None
 
 
+def _read_trade_audit(limit: int = 50) -> list[dict[str, Any]]:
+    db_path = _root() / "trade_log.db"
+    if not db_path.exists():
+        return []
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = fetch_trade_audit(conn)
+        return rows[:limit]
+    finally:
+        conn.close()
+
+
 def _format_regime_result(result: dict) -> dict:
-    """Convert run_once result to JSON-serialisable dashboard data."""
     regime = result["regime"]
     scores: pd.DataFrame = result["scores"]
     weights: pd.Series = result["target_weights"]
     trade_plan = result.get("trade_plan")
     trade_review = result.get("trade_review")
 
-    # selected ETFs table
     etfs = []
     for ticker in weights.index:
         w = float(weights.get(ticker, 0))
@@ -117,25 +128,23 @@ def _format_regime_result(result: dict) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# In-memory latest result cache
-# ---------------------------------------------------------------------------
 _latest: dict | None = None
 _backtest_latest: dict | None = None
 
 
-# ---------------------------------------------------------------------------
-# routes
-# ---------------------------------------------------------------------------
-
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     reports = _list_reports()
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
-        "latest": _latest,
-        "reports": reports[:20],
-    })
+    audit_rows = _read_trade_audit()
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "latest": _latest,
+            "reports": reports[:20],
+            "audit_rows": audit_rows,
+        },
+    )
 
 
 @app.post("/api/run", response_class=JSONResponse)
@@ -146,29 +155,24 @@ async def api_run():
         result = run_once(cfg, do_trade=False)
         _latest = _format_regime_result(result)
         return {"ok": True, "data": _latest}
-     except Exception as exc:
-         return JSONResponse(
-             status_code=500,
-             content={"ok": False, "error": str(exc), "trace": traceback.format_exc()},
-         )
-+
-+
-+@app.post("/api/backtest", response_class=JSONResponse)
-+async def api_backtest():
-+    global _backtest_latest
-+    try:
-+        cfg = _load_cfg()
-+        result = run_backtest(cfg)
-+        _backtest_latest = {
-+            "summary": result.summary,
-+            "rows": result.rebalance_log.to_dict(orient="records"),
-+        }
-+        return {"ok": True, "data": _backtest_latest}
-+    except Exception as exc:
-+        return JSONResponse(
-+            status_code=500,
-+            content={"ok": False, "error": str(exc), "trace": traceback.format_exc()},
-+        )
+    except Exception as exc:
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": str(exc), "trace": traceback.format_exc()},
+        )
+
+
+@app.post("/api/backtest", response_class=JSONResponse)
+async def api_backtest():
+    global _backtest_latest
+    try:
+        cfg = _load_cfg()
+        result = run_backtest(cfg)
+        _backtest_latest = {
+            "summary": result.summary,
+            "rows": result.rebalance_log.to_dict(orient="records"),
+        }
+        return {"ok": True, "data": _backtest_latest}
     except Exception as exc:
         return JSONResponse(
             status_code=500,
@@ -189,28 +193,40 @@ async def api_report_detail(filename: str):
     return {"filename": filename, "content": content}
 
 
+@app.get("/api/audit", response_class=JSONResponse)
+async def api_audit():
+    return {"rows": _read_trade_audit(limit=200)}
+
+
 @app.get("/report/{filename}", response_class=HTMLResponse)
 async def report_page(request: Request, filename: str):
     content = _read_report(filename)
-    return templates.TemplateResponse("report.html", {
-        "request": request,
-        "filename": filename,
-        "content": content,
-    })
+    return templates.TemplateResponse(
+        "report.html",
+        {
+            "request": request,
+            "filename": filename,
+            "content": content,
+        },
+    )
 
 
 @app.get("/history", response_class=HTMLResponse)
 async def history_page(request: Request):
-    return templates.TemplateResponse("history.html", {
-        "request": request,
-        "reports": _list_reports(),
-    })
+    return templates.TemplateResponse(
+        "history.html",
+        {
+            "request": request,
+            "reports": _list_reports(),
+        },
+    )
 
 
-+@app.get("/api/status", response_class=JSONResponse)
-+async def api_status():
-+    return {
-+        "latest": _latest,
-+        "backtest": _backtest_latest,
-+        "reports": _list_reports()[:10],
-+    }
+@app.get("/api/status", response_class=JSONResponse)
+async def api_status():
+    return {
+        "latest": _latest,
+        "backtest": _backtest_latest,
+        "reports": _list_reports()[:10],
+        "audit": _read_trade_audit(limit=20),
+    }
