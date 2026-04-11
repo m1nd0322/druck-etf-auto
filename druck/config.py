@@ -14,6 +14,14 @@ DEFAULT_CONFIG_PATH = "config.yaml"
 LOCAL_CONFIG_PATH = "config.local.yaml"
 
 
+class ConfigSection(dict[str, Any]):
+    """Thin typed mapping wrapper for dot-style access in editor tooling."""
+
+
+class AppConfig(ConfigSection):
+    pass
+
+
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     for k, v in override.items():
         if k in base and isinstance(base[k], dict) and isinstance(v, dict):
@@ -29,6 +37,13 @@ def _require(mapping: dict[str, Any], key: str, ctx: str) -> Any:
     return mapping[key]
 
 
+def _require_dict(mapping: dict[str, Any], key: str, ctx: str) -> dict[str, Any]:
+    value = _require(mapping, key, ctx)
+    if not isinstance(value, dict):
+        raise ConfigError(f"Config section must be a mapping: {ctx}.{key}")
+    return value
+
+
 def _require_number(mapping: dict[str, Any], key: str, ctx: str) -> float:
     value = _require(mapping, key, ctx)
     if not isinstance(value, (int, float)):
@@ -36,20 +51,68 @@ def _require_number(mapping: dict[str, Any], key: str, ctx: str) -> float:
     return float(value)
 
 
-def validate_config(cfg: dict[str, Any]) -> dict[str, Any]:
+def _require_bool(mapping: dict[str, Any], key: str, ctx: str) -> bool:
+    value = _require(mapping, key, ctx)
+    if not isinstance(value, bool):
+        raise ConfigError(f"Config value must be boolean: {ctx}.{key}")
+    return value
+
+
+def _validate_hour_minute(section: dict[str, Any], ctx: str):
+    hour = _require_number(section, "hour", ctx)
+    minute = _require_number(section, "minute", ctx)
+    if not 0 <= hour <= 23:
+        raise ConfigError(f"{ctx}.hour must be between 0 and 23")
+    if not 0 <= minute <= 59:
+        raise ConfigError(f"{ctx}.minute must be between 0 and 59")
+
+
+def _validate_weights_sum(weights: dict[str, Any], ctx: str):
+    total = 0.0
+    for value in weights.values():
+        if not isinstance(value, (int, float)):
+            raise ConfigError(f"All weight values must be numeric in {ctx}")
+        total += float(value)
+    if total <= 0:
+        raise ConfigError(f"Weight sum must be > 0 in {ctx}")
+
+
+def validate_config(cfg: dict[str, Any]) -> AppConfig:
     if not isinstance(cfg, dict):
         raise ConfigError("Config root must be a mapping")
 
-    data = _require(cfg, "data", "config")
-    selection = _require(cfg, "selection", "config")
-    macro_filter = _require(cfg, "macro_filter", "config")
-    risk_cut = _require(cfg, "risk_cut", "config")
-    schedule = _require(cfg, "schedule", "config")
-    kiwoom = _require(cfg, "kiwoom", "config")
+    mode = _require_dict(cfg, "mode", "config")
+    data = _require_dict(cfg, "data", "config")
+    universe = _require_dict(cfg, "universe", "config")
+    selection = _require_dict(cfg, "selection", "config")
+    macro_filter = _require_dict(cfg, "macro_filter", "config")
+    risk_cut = _require_dict(cfg, "risk_cut", "config")
+    rebalance = _require_dict(cfg, "rebalance", "config")
+    schedule = _require_dict(cfg, "schedule", "config")
+    notifier = _require_dict(cfg, "notifier", "config")
+    kiwoom = _require_dict(cfg, "kiwoom", "config")
+
+    _require_bool(mode, "dry_run", "config.mode")
+    _require_bool(mode, "enable_kiwoom", "config.mode")
 
     lookback_years = _require_number(data, "lookback_years", "config.data")
     if lookback_years < 1:
         raise ConfigError("config.data.lookback_years must be >= 1")
+    _require_bool(data, "cache_csv", "config.data")
+    _require(data, "cache_dir", "config.data")
+    provider = _require(data, "price_provider", "config.data")
+    if provider not in {"auto", "yf", "fdr"}:
+        raise ConfigError("config.data.price_provider must be one of: auto, yf, fdr")
+
+    kr = _require_dict(universe, "kr", "config.universe")
+    us = _require_dict(universe, "us", "config.universe")
+    for key in ["auto_generate", "include_leveraged", "include_inverse"]:
+        _require_bool(kr, key, "config.universe.kr")
+    for key in ["whitelist_tickers", "blacklist_tickers"]:
+        if not isinstance(_require(kr, key, "config.universe.kr"), list):
+            raise ConfigError(f"config.universe.kr.{key} must be a list")
+    if not isinstance(_require(us, "tickers", "config.universe.us"), list):
+        raise ConfigError("config.universe.us.tickers must be a list")
 
     top_n_risk_on = _require_number(selection, "top_n_risk_on", "config.selection")
     top_n_risk_off = _require_number(selection, "top_n_risk_off", "config.selection")
@@ -59,17 +122,25 @@ def validate_config(cfg: dict[str, Any]) -> dict[str, Any]:
     if not 0 < max_weight <= 1:
         raise ConfigError("config.selection.max_weight must be between 0 and 1")
 
-    thresholds = _require(macro_filter, "thresholds", "config.macro_filter")
+    score_weights = _require_dict(selection, "score_weights", "config.selection")
+    for key in ["momentum", "trend", "vol_penalty", "dd_penalty"]:
+        _require_number(score_weights, key, "config.selection.score_weights")
+    _validate_weights_sum(score_weights, "config.selection.score_weights")
+
+    _require_bool(macro_filter, "enabled", "config.macro_filter")
+    thresholds = _require_dict(macro_filter, "thresholds", "config.macro_filter")
     risk_on_score_min = _require_number(thresholds, "risk_on_score_min", "config.macro_filter.thresholds")
     risk_off_score_max = _require_number(thresholds, "risk_off_score_max", "config.macro_filter.thresholds")
     if not 0 <= risk_off_score_max < risk_on_score_min <= 1:
         raise ConfigError("macro thresholds must satisfy 0 <= risk_off_score_max < risk_on_score_min <= 1")
+    components = _require_dict(macro_filter, "components", "config.macro_filter")
+    for key in ["spy_trend_weight", "usd_mom_weight", "credit_weight", "vix_weight", "rates_weight"]:
+        _require_number(components, key, "config.macro_filter.components")
+    _validate_weights_sum(components, "config.macro_filter.components")
 
-    score_weights = _require(selection, "score_weights", "config.selection")
-    for key in ["momentum", "trend", "vol_penalty", "dd_penalty"]:
-        _require_number(score_weights, key, "config.selection.score_weights")
-
-    rules = _require(risk_cut, "rules", "config.risk_cut")
+    _require_bool(risk_cut, "enabled", "config.risk_cut")
+    rules = _require_dict(risk_cut, "rules", "config.risk_cut")
+    _require_bool(rules, "below_200sma_cut", "config.risk_cut.rules")
     trailing_dd_cut = _require_number(rules, "trailing_dd_cut", "config.risk_cut.rules")
     hard_stop_cut = _require_number(rules, "hard_stop_cut", "config.risk_cut.rules")
     if trailing_dd_cut >= 0 or hard_stop_cut >= 0:
@@ -77,18 +148,33 @@ def validate_config(cfg: dict[str, Any]) -> dict[str, Any]:
     if hard_stop_cut > trailing_dd_cut:
         raise ConfigError("hard_stop_cut should be equal to or more negative than trailing_dd_cut")
 
-    action = _require(risk_cut, "action", "config.risk_cut")
+    action = _require_dict(risk_cut, "action", "config.risk_cut")
+    _require_bool(action, "cut_to_cash", "config.risk_cut.action")
     _require(action, "cash_us", "config.risk_cut.action")
     _require(action, "cash_kr", "config.risk_cut.action")
 
+    min_trade_weight_diff = _require_number(rebalance, "min_trade_weight_diff", "config.rebalance")
+    if not 0 <= min_trade_weight_diff <= 1:
+        raise ConfigError("config.rebalance.min_trade_weight_diff must be between 0 and 1")
+    _require_bool(rebalance, "round_shares", "config.rebalance")
+    commission_bps = _require_number(rebalance, "commission_bps", "config.rebalance")
+    if commission_bps < 0:
+        raise ConfigError("config.rebalance.commission_bps must be >= 0")
+
     _require(schedule, "timezone", "config.schedule")
-    report_weekly = _require(schedule, "report_weekly", "config.schedule")
-    risk_check_daily = _require(schedule, "risk_check_daily", "config.schedule")
-    for key in ["hour", "minute"]:
-        _require_number(report_weekly, key, "config.schedule.report_weekly")
-        _require_number(risk_check_daily, key, "config.schedule.risk_check_daily")
+    report_weekly = _require_dict(schedule, "report_weekly", "config.schedule")
+    risk_check_daily = _require_dict(schedule, "risk_check_daily", "config.schedule")
+    _validate_hour_minute(report_weekly, "config.schedule.report_weekly")
+    _validate_hour_minute(risk_check_daily, "config.schedule.risk_check_daily")
     _require(report_weekly, "day_of_week", "config.schedule.report_weekly")
 
+    telegram = _require_dict(notifier, "telegram", "config.notifier")
+    _require_bool(telegram, "enabled", "config.notifier.telegram")
+    _require(telegram, "bot_token_env", "config.notifier.telegram")
+    _require(telegram, "chat_id_env", "config.notifier.telegram")
+
+    _require(kiwoom, "account_no", "config.kiwoom")
+    _require_bool(kiwoom, "market_order", "config.kiwoom")
     slippage_limit_bps = _require_number(kiwoom, "slippage_limit_bps", "config.kiwoom")
     split_n = _require_number(kiwoom, "split_n", "config.kiwoom")
     if slippage_limit_bps <= 0:
@@ -96,10 +182,10 @@ def validate_config(cfg: dict[str, Any]) -> dict[str, Any]:
     if split_n < 1:
         raise ConfigError("config.kiwoom.split_n must be >= 1")
 
-    return cfg
+    return AppConfig(cfg)
 
 
-def load_config(path: str | Path = DEFAULT_CONFIG_PATH, local_path: str | Path = LOCAL_CONFIG_PATH) -> dict[str, Any]:
+def load_config(path: str | Path = DEFAULT_CONFIG_PATH, local_path: str | Path = LOCAL_CONFIG_PATH) -> AppConfig:
     cfg_path = Path(path)
     if not cfg_path.exists():
         raise ConfigError(f"Config file not found: {cfg_path}")

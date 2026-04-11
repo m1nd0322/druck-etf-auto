@@ -5,10 +5,11 @@ on:
     branches:
       - main
       - master
+      - review/**
   pull_request:
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,11 +28,15 @@ jobs:
 
       - name: Syntax check
         run: |
-          python -m compileall -q druck run_auto.py run_report.py run_web.py
+          python -m compileall -q druck run_auto.py run_report.py run_web.py run_backtest.py
+
+      - name: Run tests
+        run: |
+          pytest -q
 
       - name: Import smoke test
         run: |
-          python -c "import druck.engine, druck.scheduler, druck.portfolio, druck.macro, druck.web.app"
+          python -c "import druck.backtest, druck.config, druck.engine, druck.scheduler, druck.portfolio, druck.macro, druck.web.app"
 
   docker:
     runs-on: ubuntu-latest

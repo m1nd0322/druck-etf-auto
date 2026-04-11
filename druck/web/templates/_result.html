@@ -30,7 +30,108 @@
 </section>
 
 {% if latest.details.get('vix_spike_halt') %}
-<div class="alert alert-warning">VIX Spike detected &mdash; trading halt signal active</div>
+<div class="alert alert-warning">VIX Spike detected, trading halt signal active</div>
+{% endif %}
+
+{% if latest.trade_plan %}
+<section class="section">
+  <h2>Order Plan Preview</h2>
+  <p>Portfolio value: {{ latest.trade_plan.portfolio_value }}, cash: {{ latest.trade_plan.cash_available }}</p>
+  {% if latest.trade_plan.warnings %}
+  <div class="alert alert-warning">
+    {% for warning in latest.trade_plan.warnings %}
+    <div>{{ warning }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if latest.trade_plan.orders %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Ticker</th>
+          <th>Side</th>
+          <th>Qty</th>
+          <th>Est. Notional</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in latest.trade_plan.orders %}
+        <tr>
+          <td>{{ order.ticker }}</td>
+          <td>{{ order.side }}</td>
+          <td>{{ order.qty }}</td>
+          <td>{{ order.est_notional }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No order intents generated for the current portfolio state.</p>
+  {% endif %}
+
+  {% if latest.trade_plan.review %}
+  <h3>Live Trade Review Checks</h3>
+  <ul>
+    {% for check in latest.trade_plan.review %}
+    <li>
+      <strong>{{ check.name }}</strong>: {{ 'OK' if check.ok else 'BLOCKED' }}
+      <div class="muted">{{ check.detail }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if latest.strategy_halt %}
+<section class="section">
+  <h2>Strategy Halt</h2>
+  <div class="alert alert-error">
+    Trading halted: {{ latest.halt_reason }}
+    {% if latest.halt_detail %}
+      ({{ latest.halt_detail }})
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% if latest.rebalance %}
+<section class="section">
+  <h2>Rebalance Status</h2>
+  {% if latest.rebalance.needs_replan %}
+  <div class="alert alert-warning">
+    Replan required: {{ latest.rebalance.detail }}
+  </div>
+  {% else %}
+  <div class="alert alert-success">
+    Rebalance cycle completed without replan request.
+  </div>
+  {% endif %}
+
+  <ul>
+    <li><strong>Operator acknowledgement required:</strong> {{ 'YES' if latest.rebalance.operator_ack_required else 'NO' }}</li>
+    <li><strong>Latest acknowledgement:</strong>
+      {% if latest.rebalance.operator_ack_state %}
+        {{ latest.rebalance.operator_ack_state.status }} at {{ latest.rebalance.operator_ack_state.timestamp }}
+        {% if latest.rebalance.operator_ack_state.note %}
+          ({{ latest.rebalance.operator_ack_state.note }})
+        {% endif %}
+      {% else %}
+        none
+      {% endif %}
+    </li>
+  </ul>
+
+  {% if latest.rebalance.operator_ack_required %}
+  <div class="ack-box">
+    <label for="ack-note"><strong>Operator acknowledgement note</strong></label>
+    <input id="ack-note" type="text" placeholder="Example: reviewed partial fill and approved manual replan" />
+    <button class="btn btn-secondary" onclick="acknowledgeReplan()">Acknowledge Replan</button>
+  </div>
+  {% endif %}
+</section>
 {% endif %}
 
 <section class="section">
@@ -70,3 +171,20 @@
     </table>
   </div>
 </section>
+
+<script>
+async function acknowledgeReplan() {
+  const note = document.getElementById('ack-note')?.value || '';
+  const resp = await fetch('/api/ack', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ack_type: 'partial_fill_replan', status: 'acknowledged', note })
+  });
+  const body = await resp.json();
+  if (!resp.ok || !body.ok) {
+    alert(body.error || 'Failed to record acknowledgement');
+    return;
+  }
+  window.location.reload();
+}
+</script>

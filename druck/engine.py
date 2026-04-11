@@ -1,11 +1,76 @@
 from __future__ import annotations
 import pandas as pd
-import yaml
 from .data import make_universe, fetch_prices, get_date_range
 from .macro import compute_macro_regime, is_vix_spike
 from .portfolio import score_universe, allocate_weights, apply_risk_cuts
 from .report import save_report
 from .notifier import send_telegram
+from .runtime import StrategyHaltError
+from .trading import build_trade_plan, review_live_trade, TradePlanError, run_rebalance_cycle
+
+def _detect_strategy_halt(cfg: dict, regime, selected: pd.DataFrame, final_w: pd.Series, cuts: list[dict], scores: pd.DataFrame) -> tuple[bool, str, str]:
+    halt_cfg = cfg.get('strategy_halt', {})
+    if not halt_cfg.get('enabled', False):
+        return False, '', ''
+
+    max_cut_ratio = float(halt_cfg.get('max_cut_asset_ratio', 0.8))
+    min_risk_score = halt_cfg.get('min_risk_score', None)
+    max_negative_momentum_assets = halt_cfg.get('max_negative_momentum_assets', None)
+
+    cash_ticker = cfg['risk_cut']['action']['cash_us']
+    cash_weight = float(final_w.get(cash_ticker, 0.0)) if cash_ticker in final_w.index else 0.0
+    if cash_weight >= max_cut_ratio:
+        return True, 'cash_dominance_halt', f'cash weight {cash_weight:.2f} exceeds threshold {max_cut_ratio:.2f}'
+
+    if min_risk_score is not None and float(regime.risk_score) <= float(min_risk_score):
+        return True, 'macro_risk_halt', f'risk score {float(regime.risk_score):.2f} <= threshold {float(min_risk_score):.2f}'
+
+    if max_negative_momentum_assets is not None and not selected.empty and 'momentum' in selected.columns:
+        negative_count = int((selected['momentum'] < 0).sum())
+        if negative_count >= int(max_negative_momentum_assets):
+            return True, 'negative_momentum_halt', f'{negative_count} selected assets have negative momentum'
+
+    perf_cfg = halt_cfg.get('performance', {})
+    if perf_cfg.get('enabled', False) and not scores.empty:
+        min_average_score = perf_cfg.get('min_average_score', None)
+        max_average_momentum = perf_cfg.get('max_average_momentum', None)
+        if min_average_score is not None:
+            avg_score = float(selected['score'].mean()) if 'score' in selected.columns and not selected.empty else 0.0
+            if avg_score <= float(min_average_score):
+                return True, 'score_degradation_halt', f'average selected score {avg_score:.4f} <= threshold {float(min_average_score):.4f}'
+        if max_average_momentum is not None:
+            avg_momentum = float(selected['momentum'].mean()) if 'momentum' in selected.columns and not selected.empty else 0.0
+            if avg_momentum <= float(max_average_momentum):
+                return True, 'momentum_degradation_halt', f'average selected momentum {avg_momentum:.4f} <= threshold {float(max_average_momentum):.4f}'
+
+        recent_total_return = perf_cfg.get('recent_total_return', None)
+        benchmark_relative_return = perf_cfg.get('benchmark_relative_return', None)
+        benchmark_ticker = perf_cfg.get('benchmark_ticker', 'SPY')
+        if recent_total_return is not None and hasattr(scores, 'index'):
+            avg_recent_return = float(selected['momentum'].mean()) if 'momentum' in selected.columns and not selected.empty else 0.0
+            if avg_recent_return <= float(recent_total_return):
+                return True, 'recent_return_halt', f'average selected recent return proxy {avg_recent_return:.4f} <= threshold {float(recent_total_return):.4f}'
+        if benchmark_relative_return is not None and benchmark_ticker in scores.index and not selected.empty:
+            benchmark_score = float(scores.loc[benchmark_ticker].get('momentum', 0.0)) if 'momentum' in scores.columns else 0.0
+            avg_selected_momentum = float(selected['momentum'].mean()) if 'momentum' in selected.columns else 0.0
+            relative_gap = avg_selected_momentum - benchmark_score
+            if relative_gap <= float(benchmark_relative_return):
+                return True, 'benchmark_underperformance_halt', f'selected momentum gap {relative_gap:.4f} <= threshold {float(benchmark_relative_return):.4f}'
+
+    if hasattr(cuts, 'empty'):
+        cuts_present = not cuts.empty
+    else:
+        cuts_present = bool(cuts)
+    if cuts_present:
+        try:
+            cut_iter = cuts.to_dict(orient='records') if hasattr(cuts, 'to_dict') else cuts
+        except TypeError:
+            cut_iter = cuts
+        if all(bool(cut.get('cut_applied', True)) for cut in cut_iter):
+            return True, 'risk_cut_cluster_halt', 'all selected assets were affected by risk cut rules'
+
+    return False, '', ''
+
 
 def run_once(cfg: dict, do_trade: bool=False, broker=None):
     if do_trade and broker is None:
@@ -58,13 +123,28 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         out.loc[cash, 'weight_target'] = 0.0
         out.loc[cash, 'weight_after_cuts'] = float(final_w[cash])
 
+    strategy_halt, halt_reason, halt_detail = _detect_strategy_halt(cfg, regime, selected, final_w, cuts, scores)
+
     md_path = save_report('output', out.sort_values('weight_after_cuts', ascending=False), regime.details, cuts)
+    trade_plan = None
+    trade_review = None
+    executed_orders = []
+    rebalance_result = None
+    if do_trade:
+        if strategy_halt:
+            raise StrategyHaltError(f"Trading halted: {halt_reason} ({halt_detail})")
+        trade_plan = build_trade_plan(cfg, broker, final_w)
+        trade_review = review_live_trade(cfg, broker, trade_plan)
+        if not trade_review.approved:
+            raise TradePlanError(f"Live trade review failed: {trade_review.checks}")
+        rebalance_result = run_rebalance_cycle(cfg, broker, final_w)
+        executed_orders = rebalance_result.executions
+
     msg = f"[Druck ETF] {regime.state} score={regime.risk_score:.2f} report={md_path}"
+    if trade_plan is not None:
+        msg += f" orders={len(trade_plan.orders)}"
     print(msg)
     send_telegram(cfg, msg)
-
-    if do_trade:
-        print("[engine] do_trade=True is not fully wired yet, report generation completed without order submission")
 
     return {
         'regime': regime,
@@ -72,4 +152,11 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         'target_weights': final_w,
         'prices': all_px,
         'report_path': md_path,
+        'trade_plan': trade_plan,
+        'trade_review': trade_review,
+        'executed_orders': executed_orders,
+        'rebalance_result': rebalance_result,
+        'strategy_halt': strategy_halt,
+        'halt_reason': halt_reason,
+        'halt_detail': halt_detail,
     }

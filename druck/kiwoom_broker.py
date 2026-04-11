@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from .broker_base import Broker
 from .utils_rate import RateLimiter
-from .db import init_db, log_fill
+from .db import init_db, log_fill, log_trade_audit
 
 def _now_kst() -> datetime:
     return datetime.now(ZoneInfo("Asia/Seoul"))
@@ -81,10 +81,16 @@ class KiwoomBroker(Broker):
         self._db = init_db(db_path)
 
     def connect(self) -> None:
-        self._init_ocx()
-        self._login_blocking()
+        try:
+            self._init_ocx()
+            self._login_blocking()
+        except Exception as exc:
+            log_trade_audit(self._db, "broker_connect", status="error", detail=str(exc))
+            raise RuntimeError(f"Kiwoom initialization failed: {exc}") from exc
         if not self._connected:
+            log_trade_audit(self._db, "broker_connect", status="error", detail="Kiwoom login failed")
             raise RuntimeError("Kiwoom login failed")
+        log_trade_audit(self._db, "broker_connect", status="ok", detail="Kiwoom connected")
 
     # -------- TR helpers --------
     def _init_ocx(self):
@@ -300,18 +306,22 @@ class KiwoomBroker(Broker):
         self.place_order(code, remain, side, "MKT")
 
     # -------- ordering --------
-    def place_order(self, ticker: str, qty: int, side: str, order_type: str="MKT") -> None:
+    def place_order(self, ticker: str, qty: int, side: str, order_type: str="MKT") -> dict:
         code=_normalize_code(ticker)
         qty=int(qty)
         side=side.upper().strip()
         if not code or qty<=0:
-            return
+            return {"status": "skipped", "qty_executed": 0, "detail": "invalid_ticker_or_qty"}
         if self.require_market_open and not _is_market_open_kst():
-            print("[KIWOOM] market closed; skip")
-            return
+            msg = "market closed"
+            print(f"[KIWOOM] {msg}; skip")
+            log_trade_audit(self._db, "place_order", ticker=code, side=side, qty=qty, status="skipped", detail=msg)
+            return {"status": "skipped", "qty_executed": 0, "detail": msg}
         if self.block_near_close and _is_near_close_kst():
-            print("[KIWOOM] near close; block new order")
-            return
+            msg = "near close block"
+            print(f"[KIWOOM] {msg}; skip")
+            log_trade_audit(self._db, "place_order", ticker=code, side=side, qty=qty, status="skipped", detail=msg)
+            return {"status": "skipped", "qty_executed": 0, "detail": msg}
         if order_type!="MKT":
             raise ValueError("Only MKT supported in this repo")
 
@@ -324,6 +334,7 @@ class KiwoomBroker(Broker):
             self._last_side = side
             if self.dry_run:
                 print(f"[DRY_RUN][ORDER] {side} {code} x {q} (part {idx}/{len(parts)})")
+                log_trade_audit(self._db, "place_order", ticker=code, side=side, qty=q, status="dry_run", detail=f"slice {idx}/{len(parts)}")
                 continue
 
             self._send_order_market(code, q, side)
@@ -335,13 +346,18 @@ class KiwoomBroker(Broker):
                 for order_no, c, remain, bs in unfilled:
                     # remain 전량 시장가 재주문
                     self.cancel_and_reorder(order_no, code, remain, side)
-                break
+                log_trade_audit(self._db, "place_order", ticker=code, side=side, qty=q, status="unfilled", detail="No fill, cancel and reorder attempted")
+                return {"status": "unfilled", "qty_executed": 0, "detail": "No fill after submission"}
 
             if not self._check_slippage(ref_price):
                 print("[KIWOOM] slippage too large; abort remaining slices")
-                break
+                log_trade_audit(self._db, "place_order", ticker=code, side=side, qty=self._filled_qty, status="slippage_abort", detail="Slippage limit exceeded")
+                return {"status": "partial_fill", "qty_executed": self._filled_qty, "detail": "Slippage limit exceeded"}
 
             time.sleep(0.3)
+
+        log_trade_audit(self._db, "place_order", ticker=code, side=side, qty=qty, status="submitted", detail="Order flow completed")
+        return {"status": "submitted", "qty_executed": qty, "detail": "Order flow completed"}
 
     def _send_order_market(self, code: str, qty: int, side: str):
         self._rate.wait()

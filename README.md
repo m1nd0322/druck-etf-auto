@@ -44,7 +44,8 @@ This structure aims to improve consistency across changing market states instead
 
 ## Architecture
 
-- `druck/engine.py`: end-to-end pipeline (`data -> regime -> scoring -> weights -> cuts -> report`)
+- `druck/engine.py`: end-to-end pipeline (`data -> regime -> scoring -> weights -> cuts -> report -> optional trade plan`)
+- `druck/trading.py`: order-intent generation and execution path helpers
 - `druck/macro.py`: macro regime scoring and VIX spike halt signal
 - `druck/portfolio.py`: cross-sectional scoring, sizing, risk cuts
 - `druck/report.py`: Markdown/CSV report generation
@@ -58,6 +59,11 @@ pip install -r requirements.txt
 python run_report.py
 ```
 
+## Continuous Integration
+
+- GitHub Actions runs syntax checks, unit tests, and Docker build validation on pushes and pull requests.
+- Review branches under `review/**` are included so hardening branches are checked before merge.
+
 Generated files:
 - `output/selection_YYYYMMDD_HHMMSS.csv`
 - `output/report_YYYYMMDD_HHMMSS.md`
@@ -69,6 +75,32 @@ python run_auto.py
 ```
 
 Schedule values are defined in `config.yaml` under `schedule`.
+
+## Install
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+## Dry Run Workflow
+
+1. Keep `mode.dry_run: true`
+2. Run `python run_report.py`
+3. Review generated markdown and CSV output in `output/`
+4. If using the web dashboard, inspect the latest regime and order plan preview first
+
+## Live Transition Checklist
+
+1. Confirm Kiwoom credentials and Windows environment readiness
+2. Keep `mode.enable_kiwoom: true` but remain on `dry_run: true` first
+3. Review the generated order plan, warnings, and live review checks
+4. Check recent trade audit events in the dashboard or `/api/audit`
+5. Confirm broker-side failure classes during dry-run and first live session, for example market-closed, slippage, connection, or funding errors
+6. Switch `dry_run` off only after report checks, account checks, and order review pass
+7. Monitor fills, audit events, notifier output, and any partial-fill replan requests during the first live session
 
 ## Live Trading Setup (Kiwoom, Windows)
 
@@ -86,6 +118,17 @@ kiwoom:
 
 Start in dry-run mode, verify logs/reports, then switch to live only after controls are validated.
 
+## Live Rollout Recommendation
+
+- Stage 1: run report-only and backtest-only checks
+- Stage 2: enable Kiwoom with `dry_run: true` and inspect order intent plus audit logs
+- Stage 3: perform first live rollout with small exposure and active monitoring
+- Stage 4: only after stable fills and reconciled positions, allow normal-size live operation
+
+If a partial fill occurs, the system now marks the rebalance cycle for replan instead of blindly continuing. Treat that as an operator review point, not an automatic green light.
+
+System/runtime errors are now intended to be reported without taking down the whole operating loop. By contrast, strategy danger signals and performance-degradation signals can halt trading while keeping the system alive for visibility and operator review.
+
 ## Reproducibility and Config
 
 - Main config: `config.yaml`
@@ -100,7 +143,27 @@ Start in dry-run mode, verify logs/reports, then switch to live only after contr
 pytest
 ```
 
-Added unit coverage focuses on core indicators, macro regime classification, and portfolio risk-cut behavior.
+`pytest.ini` pins the repository root into the Python path so local runs and GitHub Actions collect the same package imports.
+
+Added unit coverage focuses on:
+- core indicators and scoring helpers
+- macro regime classification
+- config validation
+- portfolio risk-cut behavior
+- backtest scaffolding behavior
+- data cache behavior
+- scheduler and notifier behavior
+- trade review and audit logging
+- runtime guard classification and strategy halt behavior
+- web audit/runtime visibility
+
+## Backtest Skeleton
+
+```bash
+python run_backtest.py
+```
+
+The current backtest module is intentionally minimal. It provides a safe scaffold for future work on historical rebalancing, transaction costs, and portfolio analytics.
 
 ## Roadmap
 

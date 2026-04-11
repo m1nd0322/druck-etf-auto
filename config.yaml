@@ -71,6 +71,19 @@ rebalance:
   round_shares: true
   commission_bps: 1.5
 
+strategy_halt:
+  enabled: true
+  max_cut_asset_ratio: 0.80
+  min_risk_score: 0.20
+  max_negative_momentum_assets: 3
+  performance:
+    enabled: true
+    min_average_score: 0.00
+    max_average_momentum: -0.02
+    recent_total_return: -0.03
+    benchmark_ticker: SPY
+    benchmark_relative_return: -0.05
+
 schedule:
   timezone: "Asia/Seoul"
   report_weekly:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import hashlib
 import os
 import sys
 from dataclasses import dataclass
@@ -23,6 +24,13 @@ class Universe:
 
 def _ensure_dir(p: str):
     os.makedirs(p, exist_ok=True)
+
+
+def _cache_key(tickers: List[str], start: str, end: str) -> str:
+    raw = "|".join(sorted(tickers)) + f"::{start}::{end}"
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+    return f"px_{digest}_{start}_{end}.csv"
+
 
 def generate_kr_etf_universe(whitelist: Optional[List[str]]=None, blacklist: Optional[List[str]]=None) -> List[str]:
     whitelist = whitelist or []
@@ -98,7 +106,7 @@ def fetch_prices(tickers: List[str], start: str, end: str, prefer: str='auto', c
     cache_path=None
     if cache_dir:
         _ensure_dir(cache_dir)
-        key=f"px_{hash(tuple(sorted(tickers)))}_{start}_{end}.csv"
+        key=_cache_key(tickers, start, end)
         cache_path=os.path.join(cache_dir,key)
     if use_cache and cache_path and os.path.exists(cache_path):
         try:

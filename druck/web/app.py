@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import os
-import json
+import sqlite3
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -13,26 +12,32 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from ..backtest import run_backtest
 from ..config import load_config
+from ..db import fetch_operator_ack, fetch_runtime_events, fetch_trade_audit, init_db, log_operator_ack, resolve_runtime_event
 from ..engine import run_once
 
 _HERE = Path(__file__).resolve().parent
-_ROOT = Path.cwd()
+
+
+def _root() -> Path:
+    return Path.cwd()
+
 
 app = FastAPI(title="Druck ETF Auto")
 app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
 
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
+
 
 def _load_cfg() -> dict:
-    return load_config(_ROOT / "config.yaml", _ROOT / "config.local.yaml")
+    root = _root()
+    return load_config(root / "config.yaml", root / "config.local.yaml")
+
 
 
 def _list_reports() -> List[Dict[str, Any]]:
-    out_dir = _ROOT / "output"
+    out_dir = _root() / "output"
     if not out_dir.exists():
         return []
     reports = []
@@ -47,20 +52,67 @@ def _list_reports() -> List[Dict[str, Any]]:
     return reports
 
 
+
 def _read_report(filename: str) -> str | None:
-    p = _ROOT / "output" / filename
+    p = _root() / "output" / filename
     if p.exists() and p.suffix == ".md":
         return p.read_text(encoding="utf-8")
     return None
 
 
+
+def _db_conn() -> sqlite3.Connection | None:
+    db_path = _root() / "trade_log.db"
+    if not db_path.exists():
+        return None
+    return sqlite3.connect(db_path)
+
+
+
+def _read_trade_audit(limit: int = 50) -> list[dict[str, Any]]:
+    conn = _db_conn()
+    if conn is None:
+        return []
+    try:
+        rows = fetch_trade_audit(conn)
+        return rows[:limit]
+    finally:
+        conn.close()
+
+
+
+def _read_operator_ack(limit: int = 20) -> list[dict[str, Any]]:
+    conn = _db_conn()
+    if conn is None:
+        return []
+    try:
+        rows = fetch_operator_ack(conn)
+        return rows[:limit]
+    finally:
+        conn.close()
+
+
+
+def _read_runtime_events(limit: int = 20) -> list[dict[str, Any]]:
+    conn = _db_conn()
+    if conn is None:
+        return []
+    try:
+        rows = fetch_runtime_events(conn)
+        return rows[:limit]
+    finally:
+        conn.close()
+
+
+
 def _format_regime_result(result: dict) -> dict:
-    """Convert run_once result to JSON-serialisable dashboard data."""
     regime = result["regime"]
     scores: pd.DataFrame = result["scores"]
     weights: pd.Series = result["target_weights"]
+    trade_plan = result.get("trade_plan")
+    trade_review = result.get("trade_review")
+    rebalance_result = result.get("rebalance_result")
 
-    # selected ETFs table
     etfs = []
     for ticker in weights.index:
         w = float(weights.get(ticker, 0))
@@ -84,6 +136,35 @@ def _format_regime_result(result: dict) -> dict:
         except (TypeError, ValueError):
             details[k] = str(v)
 
+    trade_summary = None
+    if trade_plan is not None:
+        trade_summary = {
+            "orders": [
+                {
+                    "ticker": o.ticker,
+                    "side": o.side,
+                    "qty": o.qty,
+                    "est_notional": round(o.est_notional, 2),
+                }
+                for o in trade_plan.orders
+            ],
+            "skipped": trade_plan.skipped,
+            "warnings": trade_plan.warnings,
+            "portfolio_value": round(trade_plan.portfolio_value, 2),
+            "cash_available": round(trade_plan.cash_available, 2),
+            "review": trade_review.checks if trade_review is not None else [],
+        }
+
+    rebalance_summary = None
+    if rebalance_result is not None:
+        rebalance_summary = {
+            "needs_replan": rebalance_result.needs_replan,
+            "detail": rebalance_result.detail,
+            "operator_ack_required": rebalance_result.operator_ack_required,
+            "operator_ack_state": rebalance_result.operator_ack_state,
+            "executions": rebalance_result.executions,
+        }
+
     return {
         "state": regime.state,
         "risk_score": round(regime.risk_score, 4),
@@ -91,27 +172,35 @@ def _format_regime_result(result: dict) -> dict:
         "etfs": etfs,
         "report_path": result.get("report_path", ""),
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "trade_plan": trade_summary,
+        "rebalance": rebalance_summary,
+        "strategy_halt": bool(result.get("strategy_halt", False)),
+        "halt_reason": result.get("halt_reason", ""),
+        "halt_detail": result.get("halt_detail", ""),
     }
 
 
-# ---------------------------------------------------------------------------
-# In-memory latest result cache
-# ---------------------------------------------------------------------------
 _latest: dict | None = None
+_backtest_latest: dict | None = None
 
-
-# ---------------------------------------------------------------------------
-# routes
-# ---------------------------------------------------------------------------
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     reports = _list_reports()
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
-        "latest": _latest,
-        "reports": reports[:20],
-    })
+    audit_rows = _read_trade_audit()
+    ack_rows = _read_operator_ack()
+    runtime_rows = _read_runtime_events()
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "latest": _latest,
+            "reports": reports[:20],
+            "audit_rows": audit_rows,
+            "ack_rows": ack_rows,
+            "runtime_rows": runtime_rows,
+        },
+    )
 
 
 @app.post("/api/run", response_class=JSONResponse)
@@ -122,6 +211,24 @@ async def api_run():
         result = run_once(cfg, do_trade=False)
         _latest = _format_regime_result(result)
         return {"ok": True, "data": _latest}
+    except Exception as exc:
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": str(exc), "trace": traceback.format_exc()},
+        )
+
+
+@app.post("/api/backtest", response_class=JSONResponse)
+async def api_backtest():
+    global _backtest_latest
+    try:
+        cfg = _load_cfg()
+        result = run_backtest(cfg)
+        _backtest_latest = {
+            "summary": result.summary,
+            "rows": result.rebalance_log.to_dict(orient="records"),
+        }
+        return {"ok": True, "data": _backtest_latest}
     except Exception as exc:
         return JSONResponse(
             status_code=500,
@@ -142,19 +249,85 @@ async def api_report_detail(filename: str):
     return {"filename": filename, "content": content}
 
 
+@app.get("/api/audit", response_class=JSONResponse)
+async def api_audit():
+    return {"rows": _read_trade_audit(limit=200)}
+
+
+@app.get("/api/ack", response_class=JSONResponse)
+async def api_ack():
+    return {"rows": _read_operator_ack(limit=200)}
+
+
+@app.get("/api/runtime", response_class=JSONResponse)
+async def api_runtime():
+    return {"rows": _read_runtime_events(limit=200)}
+
+
+@app.post("/api/runtime/{event_id}/resolve", response_class=JSONResponse)
+async def api_runtime_resolve(event_id: int, payload: dict):
+    status = str(payload.get("status", "resolved")).strip() or "resolved"
+    note = str(payload.get("note", "")).strip()
+    db_path = _root() / "trade_log.db"
+    conn = init_db(str(db_path))
+    try:
+        resolve_runtime_event(conn, event_id=event_id, status=status, resolution_note=note)
+        rows = fetch_runtime_events(conn)
+        row = next((r for r in rows if int(r["id"]) == int(event_id)), None)
+        return {"ok": True, "row": row}
+    finally:
+        conn.close()
+
+
+@app.post("/api/ack", response_class=JSONResponse)
+async def api_ack_create(payload: dict):
+    ack_type = str(payload.get("ack_type", "")).strip()
+    note = str(payload.get("note", "")).strip()
+    status = str(payload.get("status", "acknowledged")).strip() or "acknowledged"
+    if not ack_type:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "ack_type is required"})
+
+    db_path = _root() / "trade_log.db"
+    conn = init_db(str(db_path))
+    try:
+        log_operator_ack(conn, ack_type=ack_type, status=status, note=note)
+        rows = fetch_operator_ack(conn, ack_type=ack_type)
+        return {"ok": True, "row": rows[0] if rows else None}
+    finally:
+        conn.close()
+
+
 @app.get("/report/{filename}", response_class=HTMLResponse)
 async def report_page(request: Request, filename: str):
     content = _read_report(filename)
-    return templates.TemplateResponse("report.html", {
-        "request": request,
-        "filename": filename,
-        "content": content,
-    })
+    return templates.TemplateResponse(
+        "report.html",
+        {
+            "request": request,
+            "filename": filename,
+            "content": content,
+        },
+    )
 
 
 @app.get("/history", response_class=HTMLResponse)
 async def history_page(request: Request):
-    return templates.TemplateResponse("history.html", {
-        "request": request,
-        "reports": _list_reports(),
-    })
+    return templates.TemplateResponse(
+        "history.html",
+        {
+            "request": request,
+            "reports": _list_reports(),
+        },
+    )
+
+
+@app.get("/api/status", response_class=JSONResponse)
+async def api_status():
+    return {
+        "latest": _latest,
+        "backtest": _backtest_latest,
+        "reports": _list_reports()[:10],
+        "audit": _read_trade_audit(limit=20),
+        "ack": _read_operator_ack(limit=20),
+        "runtime": _read_runtime_events(limit=20),
+    }
