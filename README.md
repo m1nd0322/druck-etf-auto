@@ -155,8 +155,9 @@ python run_backtest.py
 ```
 
 Important note:
-- this is currently a **scaffold**, not a full institutional backtest engine
-- use it as a shape and workflow check, not as a final portfolio research conclusion
+- the backtest engine is now materially stronger than the original scaffold
+- it supports periodic rebalancing, turnover, transaction cost impact, benchmark comparison, and core analytics
+- it is still not a full multi-asset institutional research platform with slippage models, corporate actions research controls, and exchange-microstructure realism
 
 ## 5. Understand key safety controls
 
