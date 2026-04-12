@@ -210,6 +210,26 @@
 </div>
 
 <script>
+function formatBacktestNumber(value, digits = 4) {
+  if (value === null || value === undefined || value === '') return '';
+  const num = Number(value);
+  if (Number.isNaN(num)) return String(value);
+  return num.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatBacktestPercent(value, digits = 2) {
+  if (value === null || value === undefined || value === '') return '';
+  const num = Number(value);
+  if (Number.isNaN(num)) return String(value);
+  return `${(num * 100).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  })}%`;
+}
+
 async function runReport() {
   const btn = document.getElementById('btn-run');
   const btnText = document.getElementById('btn-text');
@@ -282,15 +302,25 @@ async function runBacktest() {
     const warning = body.data.analytics && body.data.analytics.capacity_warning;
     if (warning) {
       warningBox.style.display = 'block';
-      warningBox.textContent = `${warning.message} (portfolio=${warning.portfolio_notional}, capacity=${warning.capacity_estimate}, ratio=${warning.capacity_ratio.toFixed(2)})`;
+      warningBox.textContent = `${warning.message} (portfolio=${formatBacktestNumber(warning.portfolio_notional, 2)}, capacity=${formatBacktestNumber(warning.capacity_estimate, 2)}, ratio=${formatBacktestNumber(warning.capacity_ratio, 2)})`;
     } else {
       warningBox.style.display = 'none';
       warningBox.textContent = '';
     }
     const summary = body.data.summary || {};
-    summaryBody.innerHTML = Object.entries(summary).map(([key, value]) => `
-      <tr><th>${key}</th><td>${typeof value === 'object' ? JSON.stringify(value) : value}</td></tr>
-    `).join('');
+    summaryBody.innerHTML = Object.entries(summary).map(([key, value]) => {
+      let rendered = value;
+      if (typeof value === 'number') {
+        if (key.includes('return') || key.includes('drawdown') || key.includes('volatility') || key.includes('cagr') || key.includes('sharpe') || key.includes('sortino') || key.includes('calmar')) {
+          rendered = formatBacktestPercent(value, 2);
+        } else {
+          rendered = formatBacktestNumber(value, 4);
+        }
+      } else if (typeof value === 'object') {
+        rendered = JSON.stringify(value);
+      }
+      return `<tr><th>${key}</th><td>${rendered}</td></tr>`;
+    }).join('');
     summaryBox.style.display = Object.keys(summary).length ? 'block' : 'none';
 
     if (body.data.scenario_summary && body.data.scenario_summary.length > 0) {
@@ -298,10 +328,10 @@ async function runBacktest() {
       scenarioBody.innerHTML = body.data.scenario_summary.map((row) => `
         <tr>
           <td>${row.scenario ?? ''}</td>
-          <td>${row.scenario_total_return ?? ''}</td>
-          <td>${row.benchmark_relative_return ?? ''}</td>
-          <td>${row.volatility ?? ''}</td>
-          <td>${row.worst_day ?? ''}</td>
+          <td>${formatBacktestPercent(row.scenario_total_return, 2)}</td>
+          <td>${formatBacktestPercent(row.benchmark_relative_return, 2)}</td>
+          <td>${formatBacktestPercent(row.volatility, 2)}</td>
+          <td>${formatBacktestPercent(row.worst_day, 2)}</td>
         </tr>
       `).join('');
     } else {
@@ -315,11 +345,11 @@ async function runBacktest() {
         <tr>
           <td>${row.date ?? ''}</td>
           <td>${row.state ?? ''}</td>
-          <td>${row.turnover ?? ''}</td>
-          <td>${row.cost ?? ''}</td>
-          <td>${row.adv_20d ?? ''}</td>
-          <td>${row.capacity_estimate ?? ''}</td>
-          <td>${row.strategy_halt ?? ''}</td>
+          <td>${formatBacktestNumber(row.turnover, 4)}</td>
+          <td>${formatBacktestNumber(row.cost, 4)}</td>
+          <td>${formatBacktestNumber(row.adv_20d, 2)}</td>
+          <td>${formatBacktestNumber(row.capacity_estimate, 2)}</td>
+          <td>${row.strategy_halt ? 'YES' : 'NO'}</td>
         </tr>
       `).join('');
     } else {
