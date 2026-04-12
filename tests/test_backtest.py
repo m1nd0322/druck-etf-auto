@@ -83,6 +83,8 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert "factor_regime_attribution" in result.analytics
     assert result.scenario_summary is not None
     assert not result.scenario_summary.empty
+    assert set(["scenario", "scenario_total_return", "benchmark_relative_return"]).issubset(result.scenario_summary.columns)
+    assert len(result.scenario_summary) >= 3
 
 
 def test_run_backtest_counts_halts(monkeypatch):

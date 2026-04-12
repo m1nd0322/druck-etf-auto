@@ -251,9 +251,14 @@ Expected timeline schema:
 `end_date` can be blank for currently active members.
 
 When present, the backtest CLI now prints:
-- scenario summary
+- multi-scenario stress summary
 - walk-forward summary
 - rebalance log including ADV-style liquidity fields
+
+The default scenario table includes preset rows such as:
+- return shock plus volatility expansion
+- benchmark gap-down stress
+- volatility compression comparison
 
 ## 7. Moving toward live trading
 

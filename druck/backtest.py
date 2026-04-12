@@ -243,32 +243,64 @@ def _compute_factor_and_regime_attribution(rebalance_log: pd.DataFrame) -> dict[
     }
 
 
-def _compute_scenario_report(daily_returns: pd.Series, cfg: dict) -> pd.DataFrame:
+def _compute_scenario_report(daily_returns: pd.Series, benchmark_returns: pd.Series | None, cfg: dict) -> pd.DataFrame:
     scenario_cfg = cfg.get("backtest", {}).get("scenarios", {})
     if not scenario_cfg.get("enabled", False) or daily_returns.empty:
         return pd.DataFrame()
-    shock = float(scenario_cfg.get("stress_return_shock", -0.05))
-    vol_multiplier = float(scenario_cfg.get("vol_multiplier", 1.5))
-    stressed = daily_returns * vol_multiplier
-    stressed.iloc[:] = stressed.iloc[:] + shock / max(len(stressed), 1)
-    return pd.DataFrame(
+
+    presets = scenario_cfg.get(
+        "presets",
         [
+            {"name": "return_shock_and_vol_up", "return_shock": scenario_cfg.get("stress_return_shock", -0.05), "vol_multiplier": scenario_cfg.get("vol_multiplier", 1.5), "benchmark_shock": 0.0},
+            {"name": "benchmark_gap_down", "return_shock": -0.02, "vol_multiplier": 1.2, "benchmark_shock": -0.04},
+            {"name": "volatility_crush", "return_shock": 0.0, "vol_multiplier": 0.7, "benchmark_shock": 0.0},
+        ],
+    )
+
+    rows: list[dict[str, Any]] = []
+    for preset in presets:
+        scenario_name = str(preset.get("name", "scenario"))
+        return_shock = float(preset.get("return_shock", 0.0))
+        vol_multiplier = float(preset.get("vol_multiplier", 1.0))
+        benchmark_shock = float(preset.get("benchmark_shock", 0.0))
+
+        stressed = daily_returns * vol_multiplier
+        stressed.iloc[:] = stressed.iloc[:] + return_shock / max(len(stressed), 1)
+        scenario_total_return = float((1.0 + stressed).prod() - 1.0)
+        scenario_vol = float(stressed.std() * (252 ** 0.5)) if len(stressed) > 1 else 0.0
+        benchmark_total_return = 0.0
+        benchmark_relative_return = None
+        if benchmark_returns is not None and not benchmark_returns.empty:
+            stressed_benchmark = benchmark_returns * vol_multiplier
+            stressed_benchmark.iloc[:] = stressed_benchmark.iloc[:] + benchmark_shock / max(len(stressed_benchmark), 1)
+            benchmark_total_return = float((1.0 + stressed_benchmark).prod() - 1.0)
+            benchmark_relative_return = scenario_total_return - benchmark_total_return
+
+        rows.append(
             {
-                "scenario": "return_shock_and_vol_up",
+                "scenario": scenario_name,
+                "return_shock": return_shock,
+                "vol_multiplier": vol_multiplier,
+                "benchmark_shock": benchmark_shock,
                 "avg_return": float(stressed.mean()),
                 "worst_day": float(stressed.min()),
-                "volatility": float(stressed.std() * (252 ** 0.5)) if len(stressed) > 1 else 0.0,
+                "volatility": scenario_vol,
+                "scenario_total_return": scenario_total_return,
+                "benchmark_total_return": benchmark_total_return,
+                "benchmark_relative_return": benchmark_relative_return,
             }
-        ]
-    )
+        )
+    return pd.DataFrame(rows)
 
 
 def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame, prep_diagnostics: dict[str, Any], volume_data: pd.DataFrame | None) -> BacktestResult:
     benchmark_curve = None
+    benchmark_returns = None
     if bt_cfg.benchmark_ticker in prices.columns:
         bench = prices[bt_cfg.benchmark_ticker].dropna()
         if not bench.empty:
             benchmark_curve = bench / bench.iloc[0] * bt_cfg.starting_capital
+            benchmark_returns = bench.pct_change(fill_method=None).fillna(0.0)
 
     freq = "ME" if bt_cfg.rebalance_frequency == "M" else bt_cfg.rebalance_frequency
     rebal_dates = prices.resample(freq).last().index
@@ -383,7 +415,7 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
         benchmark_curve=benchmark_curve,
         analytics=analytics,
         walkforward_summary=None,
-        scenario_summary=_compute_scenario_report(daily_returns_series, cfg),
+        scenario_summary=_compute_scenario_report(daily_returns_series, benchmark_returns, cfg),
     )
 
 
