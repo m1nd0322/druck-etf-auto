@@ -6,6 +6,13 @@ from druck.notifier import send_telegram
 from druck.runtime import RuntimeEvent, db_runtime_reporter, run_guarded
 
 
+def _print_optional_report(title: str, df):
+    if df is None or df.empty:
+        return
+    print(f"\n[{title}]")
+    print(df.to_string(index=False))
+
+
 if __name__ == "__main__":
     cfg = load_config("config.yaml")
 
@@ -23,4 +30,7 @@ if __name__ == "__main__":
     if runtime.ok:
         result = runtime.payload["backtest"]
         pprint(result.summary)
+        _print_optional_report("Scenario Summary", result.scenario_summary)
+        _print_optional_report("Walkforward Summary", result.walkforward_summary)
+        print("\n[Rebalance Log]")
         print(result.rebalance_log.to_string(index=False))

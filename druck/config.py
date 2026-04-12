@@ -88,6 +88,7 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
     macro_filter = _require_dict(cfg, "macro_filter", "config")
     risk_cut = _require_dict(cfg, "risk_cut", "config")
     rebalance = _require_dict(cfg, "rebalance", "config")
+    backtest = _require_dict(cfg, "backtest", "config")
     schedule = _require_dict(cfg, "schedule", "config")
     notifier = _require_dict(cfg, "notifier", "config")
     kiwoom = _require_dict(cfg, "kiwoom", "config")
@@ -160,6 +161,43 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
     commission_bps = _require_number(rebalance, "commission_bps", "config.rebalance")
     if commission_bps < 0:
         raise ConfigError("config.rebalance.commission_bps must be >= 0")
+
+    _require(backtest, "rebalance_frequency", "config.backtest")
+    for key in [
+        "transaction_cost_bps",
+        "slippage_bps",
+        "market_impact_bps_per_turnover",
+        "liquidity_vol_multiplier_bps",
+        "starting_capital",
+        "min_history_days",
+        "adv_window_days",
+        "max_participation_rate",
+        "capacity_safety_factor",
+    ]:
+        _require_number(backtest, key, "config.backtest")
+    for key in ["strict_point_in_time", "drop_incomplete_assets", "enforce_delist_exit"]:
+        _require_bool(backtest, key, "config.backtest")
+    _require(backtest, "benchmark_ticker", "config.backtest")
+    _require(backtest, "universe_timeline_path", "config.backtest")
+    _require(backtest, "volume_data_path", "config.backtest")
+    scenarios = _require_dict(backtest, "scenarios", "config.backtest")
+    _require_bool(scenarios, "enabled", "config.backtest.scenarios")
+    _require_number(scenarios, "stress_return_shock", "config.backtest.scenarios")
+    _require_number(scenarios, "vol_multiplier", "config.backtest.scenarios")
+    walkforward = _require_dict(backtest, "walkforward", "config.backtest")
+    _require_bool(walkforward, "enabled", "config.backtest.walkforward")
+    for key in ["train_days", "test_days", "step_days"]:
+        value = _require_number(walkforward, key, "config.backtest.walkforward")
+        if value < 1:
+            raise ConfigError(f"config.backtest.walkforward.{key} must be >= 1")
+    if _require_number(backtest, "adv_window_days", "config.backtest") < 1:
+        raise ConfigError("config.backtest.adv_window_days must be >= 1")
+    max_participation_rate = _require_number(backtest, "max_participation_rate", "config.backtest")
+    if not 0 < max_participation_rate <= 1:
+        raise ConfigError("config.backtest.max_participation_rate must be between 0 and 1")
+    capacity_safety_factor = _require_number(backtest, "capacity_safety_factor", "config.backtest")
+    if not 0 < capacity_safety_factor <= 1:
+        raise ConfigError("config.backtest.capacity_safety_factor must be between 0 and 1")
 
     _require(schedule, "timezone", "config.schedule")
     report_weekly = _require_dict(schedule, "report_weekly", "config.schedule")

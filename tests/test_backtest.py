@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import pandas as pd
 
 from druck.backtest import BacktestResult, run_backtest
@@ -41,6 +42,9 @@ def _base_cfg():
             "enforce_delist_exit": True,
             "universe_timeline_path": "",
             "volume_data_path": "",
+            "adv_window_days": 20,
+            "max_participation_rate": 0.10,
+            "capacity_safety_factor": 0.25,
             "scenarios": {"enabled": True, "stress_return_shock": -0.05, "vol_multiplier": 1.5},
             "walkforward": {"enabled": True, "train_days": 252, "test_days": 42, "step_days": 42},
         },
@@ -130,6 +134,9 @@ def test_run_backtest_tracks_slippage_impact_and_liquidity_costs(monkeypatch, tm
     assert result.summary["total_slippage_cost"] >= 0.0
     assert result.summary["total_impact_cost"] >= 0.0
     assert result.summary["total_liquidity_penalty"] >= 0.0
+    assert result.summary["avg_adv_20d"] > 0.0
+    assert result.summary["avg_participation_rate"] == pytest.approx(cfg["backtest"]["max_participation_rate"])
+    assert result.summary["avg_capacity_estimate"] > 0.0
 
 
 def test_run_backtest_drops_incomplete_assets_and_marks_delisted(monkeypatch, tmp_path):
@@ -149,9 +156,9 @@ def test_run_backtest_drops_incomplete_assets_and_marks_delisted(monkeypatch, tm
         "DELIST": delisted_series,
     })
     timeline = pd.DataFrame([
-        {"ticker": "SPY", "start_date": "2024-01-01"},
-        {"ticker": "LATE", "start_date": str(idx[-100].date())},
-        {"ticker": "DELIST", "start_date": "2024-01-01"},
+        {"ticker": "SPY", "start_date": "2024-01-01", "end_date": ""},
+        {"ticker": "LATE", "start_date": str(idx[-100].date()), "end_date": ""},
+        {"ticker": "DELIST", "start_date": "2024-01-01", "end_date": str(idx[299].date())},
     ])
     timeline_path = tmp_path / "timeline.csv"
     timeline.to_csv(timeline_path, index=False)
@@ -165,3 +172,5 @@ def test_run_backtest_drops_incomplete_assets_and_marks_delisted(monkeypatch, tm
     assert "LATE" in result.summary["dropped_incomplete_assets"]
     assert "DELIST" in result.summary["delisted_assets"]
     assert result.summary["timeline_applied"] is True
+    last_weights = result.rebalance_log.iloc[-1]["weights"]
+    assert "DELIST" not in last_weights or last_weights.get("DELIST", 0.0) == 0.0

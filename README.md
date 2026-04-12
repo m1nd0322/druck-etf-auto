@@ -156,8 +156,8 @@ python run_backtest.py
 
 Important note:
 - the backtest engine is now materially stronger than the original scaffold
-- it supports periodic rebalancing, turnover, transaction cost impact, slippage and market-impact cost modeling, benchmark comparison, point-in-time defensive handling, walk-forward evaluation, and core analytics
-- it is still not a full multi-asset institutional research platform with corporate actions research controls, delisting realism, and exchange-microstructure-perfect execution modeling
+- it supports periodic rebalancing, turnover, transaction cost impact, slippage and market-impact cost modeling, benchmark comparison, point-in-time defensive handling, historical universe timeline hooks, volume-data hooks for ADV-style liquidity estimates, walk-forward evaluation, scenario summaries, and core analytics
+- it is still not a full multi-asset institutional research platform with corporate actions research controls, survivorship-bias-free vendor history, and exchange-microstructure-perfect execution modeling
 
 ## 5. Understand key safety controls
 
@@ -210,6 +210,7 @@ Important config sections:
 - `selection` - ETF scoring and concentration
 - `risk_cut` - defensive risk controls
 - `rebalance` - minimum trade thresholds
+- `backtest` - rebalance cadence, transaction costs, historical universe timeline path, volume/ADV hooks, scenarios, and walk-forward settings
 - `strategy_halt` - trade-stop rules when signals degrade
 - `schedule` - report and risk-check timing
 - `notifier` - Telegram notifications
@@ -224,6 +225,35 @@ mode:
 ```
 
 Stay here until you understand the generated reports and dashboard behavior.
+
+### Backtest research extensions
+
+Example backtest section:
+
+```yaml
+backtest:
+  universe_timeline_path: "data/universe_timeline.csv"
+  volume_data_path: "data/volume.csv"
+  adv_window_days: 20
+  max_participation_rate: 0.10
+  capacity_safety_factor: 0.25
+  scenarios:
+    enabled: true
+    stress_return_shock: -0.05
+    vol_multiplier: 1.5
+```
+
+Expected timeline schema:
+- `ticker`
+- `start_date`
+- `end_date`
+
+`end_date` can be blank for currently active members.
+
+When present, the backtest CLI now prints:
+- scenario summary
+- walk-forward summary
+- rebalance log including ADV-style liquidity fields
 
 ## 7. Moving toward live trading
 

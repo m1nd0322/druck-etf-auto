@@ -85,6 +85,9 @@ backtest:
   enforce_delist_exit: true
   universe_timeline_path: ""
   volume_data_path: ""
+  adv_window_days: 20
+  max_participation_rate: 0.10
+  capacity_safety_factor: 0.25
   scenarios:
     enabled: true
     stress_return_shock: -0.05

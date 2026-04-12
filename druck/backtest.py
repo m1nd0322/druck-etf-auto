@@ -39,6 +39,9 @@ class BacktestConfig:
     enforce_delist_exit: bool = True
     universe_timeline_path: str = ""
     volume_data_path: str = ""
+    adv_window_days: int = 20
+    max_participation_rate: float = 0.10
+    capacity_safety_factor: float = 0.25
 
 
 def _compute_summary(equity_curve: pd.Series, daily_returns: pd.Series, benchmark_curve: pd.Series | None = None) -> dict[str, Any]:
@@ -114,7 +117,7 @@ def _load_volume_data(path: str) -> pd.DataFrame | None:
 def _apply_universe_timeline(prices: pd.DataFrame, timeline: pd.DataFrame | None) -> pd.DataFrame:
     if timeline is None or timeline.empty:
         return prices
-    required = {"ticker", "start_date"}
+    required = {"ticker", "start_date", "end_date"}
     if not required.issubset(set(timeline.columns)):
         return prices
     px = prices.copy()
@@ -123,7 +126,11 @@ def _apply_universe_timeline(prices: pd.DataFrame, timeline: pd.DataFrame | None
         if ticker not in px.columns:
             continue
         start_date = pd.Timestamp(row["start_date"])
+        end_raw = row["end_date"]
+        end_date = pd.Timestamp(end_raw) if pd.notna(end_raw) and str(end_raw).strip() else None
         px.loc[px.index < start_date, ticker] = pd.NA
+        if end_date is not None:
+            px.loc[px.index > end_date, ticker] = pd.NA
     return px
 
 
@@ -167,6 +174,8 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
         regime.details["vix_spike_halt"] = True
 
     all_px = px_window.drop(columns=[c for c in ["^VIX"] if c in px_window.columns], errors="ignore")
+    active_cols = [col for col in all_px.columns if pd.notna(all_px[col].iloc[-1])]
+    all_px = all_px[active_cols]
     scores = score_universe(all_px, cfg["selection"]["score_weights"])
     if scores.empty:
         raise RuntimeError("Not enough history to score universe")
@@ -190,28 +199,35 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     return state, float(regime.risk_score), final_w, selected, cuts, strategy_halt, halt_reason, halt_detail
 
 
-def _estimate_adv_proxy(selected: pd.DataFrame, volume_slice: pd.DataFrame | None, dt: pd.Timestamp) -> float:
+def _estimate_adv_metrics(selected: pd.DataFrame, volume_slice: pd.DataFrame | None, dt: pd.Timestamp, bt_cfg: BacktestConfig) -> tuple[float, float, float]:
     if volume_slice is not None and not volume_slice.empty:
-        current = volume_slice.loc[:dt].tail(20)
+        cols = [c for c in selected.index if c in volume_slice.columns]
+        current = volume_slice.loc[:dt, cols].tail(bt_cfg.adv_window_days) if cols else pd.DataFrame()
         if not current.empty:
-            return float(current.mean().mean())
+            adv_20d = float(current.mean().mean())
+            participation_rate = min(bt_cfg.max_participation_rate, 1.0)
+            capacity = adv_20d * participation_rate * bt_cfg.capacity_safety_factor
+            return adv_20d, participation_rate, capacity
     if not selected.empty and "vol" in selected.columns:
         avg_vol = float(selected["vol"].mean()) if selected["vol"].notna().any() else 0.0
         if avg_vol > 0:
-            return 1.0 / avg_vol
-    return 0.0
+            adv_proxy = 1.0 / avg_vol
+            participation_rate = min(bt_cfg.max_participation_rate, 1.0)
+            capacity = adv_proxy * participation_rate * bt_cfg.capacity_safety_factor
+            return adv_proxy, participation_rate, capacity
+    return 0.0, min(bt_cfg.max_participation_rate, 1.0), 0.0
 
 
-def _compute_execution_cost(equity: float, turnover: float, selected: pd.DataFrame, bt_cfg: BacktestConfig, volume_slice: pd.DataFrame | None, dt: pd.Timestamp) -> tuple[float, float, float, float, float]:
+def _compute_execution_cost(equity: float, turnover: float, selected: pd.DataFrame, bt_cfg: BacktestConfig, volume_slice: pd.DataFrame | None, dt: pd.Timestamp) -> tuple[float, float, float, float, float, float, float, float]:
     base_cost = equity * (turnover / 2.0) * (bt_cfg.transaction_cost_bps / 10000.0)
     slippage_cost = equity * (turnover / 2.0) * (bt_cfg.slippage_bps / 10000.0)
     impact_cost = equity * ((turnover / 2.0) ** 2) * (bt_cfg.market_impact_bps_per_turnover / 10000.0)
-    adv_proxy = _estimate_adv_proxy(selected, volume_slice, dt)
+    adv_20d, participation_rate, capacity = _estimate_adv_metrics(selected, volume_slice, dt, bt_cfg)
     liquidity_penalty = 0.0
-    if adv_proxy > 0:
-        liquidity_penalty = equity * (turnover / 2.0) * (bt_cfg.liquidity_vol_multiplier_bps / 10000.0) / max(adv_proxy, 1e-9)
+    if adv_20d > 0:
+        liquidity_penalty = equity * (turnover / 2.0) * (bt_cfg.liquidity_vol_multiplier_bps / 10000.0) / max(adv_20d, 1e-9)
     total_cost = base_cost + slippage_cost + impact_cost + liquidity_penalty
-    return total_cost, base_cost, slippage_cost, impact_cost, liquidity_penalty
+    return total_cost, base_cost, slippage_cost, impact_cost, liquidity_penalty, adv_20d, participation_rate, capacity
 
 
 def _compute_factor_and_regime_attribution(rebalance_log: pd.DataFrame) -> dict[str, Any]:
@@ -282,7 +298,7 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
             new = target_weights.reindex(all_names).fillna(0.0)
             turnover = float((new - prev).abs().sum())
 
-        total_cost, base_cost, slippage_cost, impact_cost, liquidity_penalty = _compute_execution_cost(equity, turnover, selected, bt_cfg, volume_data, dt)
+        total_cost, base_cost, slippage_cost, impact_cost, liquidity_penalty, adv_20d, participation_rate, capacity = _compute_execution_cost(equity, turnover, selected, bt_cfg, volume_data, dt)
         equity -= total_cost
         current_weights = target_weights.copy()
 
@@ -318,6 +334,9 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
                 "strategy_halt": strategy_halt,
                 "halt_reason": halt_reason,
                 "halt_detail": halt_detail,
+                "adv_20d": adv_20d,
+                "participation_rate": participation_rate,
+                "capacity_estimate": capacity,
                 "selected_avg_momentum": float(selected["momentum"].mean()) if not selected.empty and "momentum" in selected.columns else 0.0,
                 "selected_avg_trend": float(selected["trend"].mean()) if not selected.empty and "trend" in selected.columns else 0.0,
                 "selected_avg_vol": float(selected["vol"].mean()) if not selected.empty and "vol" in selected.columns else 0.0,
@@ -340,6 +359,9 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
     summary["total_impact_cost"] = float(rebalance_log["impact_cost"].sum()) if not rebalance_log.empty else 0.0
     summary["total_liquidity_penalty"] = float(rebalance_log["liquidity_penalty"].sum()) if not rebalance_log.empty else 0.0
     summary["halt_count"] = int(rebalance_log["strategy_halt"].sum()) if not rebalance_log.empty else 0
+    summary["avg_adv_20d"] = float(rebalance_log["adv_20d"].mean()) if not rebalance_log.empty and "adv_20d" in rebalance_log.columns else 0.0
+    summary["avg_participation_rate"] = float(rebalance_log["participation_rate"].mean()) if not rebalance_log.empty and "participation_rate" in rebalance_log.columns else 0.0
+    summary["avg_capacity_estimate"] = float(rebalance_log["capacity_estimate"].mean()) if not rebalance_log.empty and "capacity_estimate" in rebalance_log.columns else 0.0
     summary["dropped_incomplete_assets"] = prep_diagnostics.get("dropped_incomplete_assets", [])
     summary["delisted_assets"] = prep_diagnostics.get("delisted_assets", [])
     summary["timeline_applied"] = prep_diagnostics.get("timeline_applied", False)
@@ -412,6 +434,9 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
         enforce_delist_exit=bool(cfg.get("backtest", {}).get("enforce_delist_exit", True)),
         universe_timeline_path=str(cfg.get("backtest", {}).get("universe_timeline_path", "")),
         volume_data_path=str(cfg.get("backtest", {}).get("volume_data_path", "")),
+        adv_window_days=int(cfg.get("backtest", {}).get("adv_window_days", 20)),
+        max_participation_rate=float(cfg.get("backtest", {}).get("max_participation_rate", 0.10)),
+        capacity_safety_factor=float(cfg.get("backtest", {}).get("capacity_safety_factor", 0.25)),
     )
 
     start, end = get_date_range(cfg["data"]["lookback_years"])

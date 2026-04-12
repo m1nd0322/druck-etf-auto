@@ -39,6 +39,26 @@ VALID_CFG = {
         "action": {"cut_to_cash": True, "cash_us": "SHY", "cash_kr": "130730.KS"},
     },
     "rebalance": {"min_trade_weight_diff": 0.01, "round_shares": True, "commission_bps": 1.5},
+    "backtest": {
+        "rebalance_frequency": "M",
+        "transaction_cost_bps": 1.5,
+        "slippage_bps": 3.0,
+        "market_impact_bps_per_turnover": 5.0,
+        "liquidity_vol_multiplier_bps": 2.0,
+        "starting_capital": 1.0,
+        "benchmark_ticker": "SPY",
+        "min_history_days": 252,
+        "strict_point_in_time": True,
+        "drop_incomplete_assets": True,
+        "enforce_delist_exit": True,
+        "universe_timeline_path": "",
+        "volume_data_path": "",
+        "adv_window_days": 20,
+        "max_participation_rate": 0.10,
+        "capacity_safety_factor": 0.25,
+        "scenarios": {"enabled": True, "stress_return_shock": -0.05, "vol_multiplier": 1.5},
+        "walkforward": {"enabled": True, "train_days": 252, "test_days": 42, "step_days": 42},
+    },
     "schedule": {
         "timezone": "Asia/Seoul",
         "report_weekly": {"day_of_week": "sat", "hour": 9, "minute": 5},
@@ -76,6 +96,7 @@ def test_load_config_reads_yaml(tmp_path):
         "selection:\n  top_n_risk_on: 8\n  top_n_risk_off: 4\n  score_weights:\n    momentum: 0.55\n    trend: 0.25\n    vol_penalty: 0.1\n    dd_penalty: 0.1\n  max_weight: 0.25\n"
         "risk_cut:\n  enabled: true\n  rules:\n    below_200sma_cut: true\n    trailing_dd_cut: -0.12\n    hard_stop_cut: -0.18\n  action:\n    cut_to_cash: true\n    cash_us: SHY\n    cash_kr: 130730.KS\n"
         "rebalance:\n  min_trade_weight_diff: 0.01\n  round_shares: true\n  commission_bps: 1.5\n"
+        "backtest:\n  rebalance_frequency: M\n  transaction_cost_bps: 1.5\n  slippage_bps: 3.0\n  market_impact_bps_per_turnover: 5.0\n  liquidity_vol_multiplier_bps: 2.0\n  starting_capital: 1.0\n  benchmark_ticker: SPY\n  min_history_days: 252\n  strict_point_in_time: true\n  drop_incomplete_assets: true\n  enforce_delist_exit: true\n  universe_timeline_path: ''\n  volume_data_path: ''\n  adv_window_days: 20\n  max_participation_rate: 0.1\n  capacity_safety_factor: 0.25\n  scenarios:\n    enabled: true\n    stress_return_shock: -0.05\n    vol_multiplier: 1.5\n  walkforward:\n    enabled: true\n    train_days: 252\n    test_days: 42\n    step_days: 42\n"
         "schedule:\n  timezone: Asia/Seoul\n  report_weekly:\n    day_of_week: sat\n    hour: 9\n    minute: 5\n  risk_check_daily:\n    hour: 16\n    minute: 5\n"
         "notifier:\n  telegram:\n    enabled: false\n    bot_token_env: TELEGRAM_BOT_TOKEN\n    chat_id_env: TELEGRAM_CHAT_ID\n"
         "kiwoom:\n  account_no: ''\n  market_order: true\n  split_n: 3\n  slippage_limit_bps: 30\n",
