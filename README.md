@@ -241,6 +241,15 @@ backtest:
     enabled: true
     stress_return_shock: -0.05
     vol_multiplier: 1.5
+    presets:
+      - name: return_shock_and_vol_up
+        return_shock: -0.05
+        vol_multiplier: 1.5
+        benchmark_shock: 0.0
+      - name: benchmark_gap_down
+        return_shock: -0.02
+        vol_multiplier: 1.2
+        benchmark_shock: -0.04
 ```
 
 Expected timeline schema:

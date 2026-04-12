@@ -45,7 +45,16 @@ def _base_cfg():
             "adv_window_days": 20,
             "max_participation_rate": 0.10,
             "capacity_safety_factor": 0.25,
-            "scenarios": {"enabled": True, "stress_return_shock": -0.05, "vol_multiplier": 1.5},
+            "scenarios": {
+                "enabled": True,
+                "stress_return_shock": -0.05,
+                "vol_multiplier": 1.5,
+                "presets": [
+                    {"name": "return_shock_and_vol_up", "return_shock": -0.05, "vol_multiplier": 1.5, "benchmark_shock": 0.0},
+                    {"name": "benchmark_gap_down", "return_shock": -0.02, "vol_multiplier": 1.2, "benchmark_shock": -0.04},
+                    {"name": "volatility_crush", "return_shock": 0.0, "vol_multiplier": 0.7, "benchmark_shock": 0.0},
+                ],
+            },
             "walkforward": {"enabled": True, "train_days": 252, "test_days": 42, "step_days": 42},
         },
     }

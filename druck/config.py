@@ -184,6 +184,18 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
     _require_bool(scenarios, "enabled", "config.backtest.scenarios")
     _require_number(scenarios, "stress_return_shock", "config.backtest.scenarios")
     _require_number(scenarios, "vol_multiplier", "config.backtest.scenarios")
+    presets = _require(scenarios, "presets", "config.backtest.scenarios")
+    if not isinstance(presets, list) or not presets:
+        raise ConfigError("config.backtest.scenarios.presets must be a non-empty list")
+    for i, preset in enumerate(presets):
+        if not isinstance(preset, dict):
+            raise ConfigError(f"config.backtest.scenarios.presets[{i}] must be a mapping")
+        _require(preset, "name", f"config.backtest.scenarios.presets[{i}]")
+        _require_number(preset, "return_shock", f"config.backtest.scenarios.presets[{i}]")
+        vol_multiplier = _require_number(preset, "vol_multiplier", f"config.backtest.scenarios.presets[{i}]")
+        _require_number(preset, "benchmark_shock", f"config.backtest.scenarios.presets[{i}]")
+        if vol_multiplier <= 0:
+            raise ConfigError(f"config.backtest.scenarios.presets[{i}].vol_multiplier must be > 0")
     walkforward = _require_dict(backtest, "walkforward", "config.backtest")
     _require_bool(walkforward, "enabled", "config.backtest.walkforward")
     for key in ["train_days", "test_days", "step_days"]:
