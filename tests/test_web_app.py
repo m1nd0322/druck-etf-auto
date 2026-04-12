@@ -96,3 +96,28 @@ def test_dashboard_template_contains_backtest_sections():
     assert "Backtest Snapshot" in text
     assert "Scenario Summary" in text
     assert "Recent Rebalance Rows" in text
+
+
+def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+
+    from druck import web as web_pkg
+    import druck.web.app as web_app
+
+    web_app._backtest_latest = {
+        "summary": {},
+        "rows": [],
+        "scenario_summary": [],
+        "analytics": {
+            "capacity_warning": {
+                "status": "warning",
+                "message": "portfolio size exceeds estimated safe capacity",
+            }
+        },
+    }
+
+    resp = client.get("/api/status")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["warnings"]["backtest_capacity_warning"]["status"] == "warning"

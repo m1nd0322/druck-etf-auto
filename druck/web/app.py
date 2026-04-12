@@ -184,6 +184,16 @@ _latest: dict | None = None
 _backtest_latest: dict | None = None
 
 
+def _status_warnings() -> dict[str, Any]:
+    backtest_warning = None
+    if _backtest_latest is not None:
+        analytics = _backtest_latest.get("analytics", {}) or {}
+        backtest_warning = analytics.get("capacity_warning")
+    return {
+        "backtest_capacity_warning": backtest_warning,
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     reports = _list_reports()
@@ -326,6 +336,7 @@ async def history_page(request: Request):
 @app.get("/api/status", response_class=JSONResponse)
 async def api_status():
     return {
+        "warnings": _status_warnings(),
         "latest": _latest,
         "backtest": _backtest_latest,
         "reports": _list_reports()[:10],
