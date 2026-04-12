@@ -264,6 +264,15 @@ When present, the backtest CLI now prints:
 - walk-forward summary
 - rebalance log including ADV-style liquidity fields
 
+The dashboard backtest view now also shows:
+- formatted summary metrics
+- capacity warning banner when portfolio size exceeds estimated safe capacity
+- scenario results as a table instead of raw JSON
+- recent rebalance rows with formatted turnover, cost, ADV, and capacity values
+
+The status API now surfaces top-level warnings via:
+- `/api/status -> warnings.backtest_capacity_warning`
+
 The default scenario table includes preset rows such as:
 - return shock plus volatility expansion
 - benchmark gap-down stress
@@ -336,9 +345,11 @@ python run_backtest.py
 
 Useful API endpoints:
 - `/api/status`
+- `/api/status -> warnings.backtest_capacity_warning`
 - `/api/audit`
 - `/api/ack`
 - `/api/runtime`
+- `/api/backtest`
 
 The dashboard is the recommended first interface for operators.
 
