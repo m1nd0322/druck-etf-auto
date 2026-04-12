@@ -86,3 +86,13 @@ def test_backtest_api_returns_scenarios_and_analytics(tmp_path, monkeypatch):
     assert body["ok"] is True
     assert body["data"]["scenario_summary"][0]["scenario"] == "shock"
     assert body["data"]["analytics"]["capacity_warning"]["status"] == "warning"
+
+
+def test_dashboard_template_contains_backtest_sections():
+    from pathlib import Path
+
+    dashboard_path = Path(__file__).resolve().parents[1] / "druck" / "web" / "templates" / "dashboard.html"
+    text = dashboard_path.read_text(encoding="utf-8")
+    assert "Backtest Snapshot" in text
+    assert "Scenario Summary" in text
+    assert "Recent Rebalance Rows" in text

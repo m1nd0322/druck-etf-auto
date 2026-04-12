@@ -42,11 +42,53 @@
   <div id="backtest-box" class="section" style="display:none">
     <h2>Backtest Snapshot</h2>
     <div id="backtest-warning" class="alert alert-error" style="display:none"></div>
+
+    <div id="backtest-summary" style="display:none">
+      <h3>Summary</h3>
+      <div class="table-wrap">
+        <table>
+          <tbody id="backtest-summary-body"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div id="backtest-scenarios" style="display:none">
       <h3>Scenario Summary</h3>
-      <pre id="backtest-scenarios-content"></pre>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Scenario</th>
+              <th>Total Return</th>
+              <th>Benchmark Relative</th>
+              <th>Volatility</th>
+              <th>Worst Day</th>
+            </tr>
+          </thead>
+          <tbody id="backtest-scenarios-body"></tbody>
+        </table>
+      </div>
     </div>
-    <pre id="backtest-content"></pre>
+
+    <div id="backtest-rows" style="display:none">
+      <h3>Recent Rebalance Rows</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>State</th>
+              <th>Turnover</th>
+              <th>Cost</th>
+              <th>ADV 20d</th>
+              <th>Capacity</th>
+              <th>Halt</th>
+            </tr>
+          </thead>
+          <tbody id="backtest-rows-body"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   {% if audit_rows %}
@@ -218,10 +260,13 @@ async function runBacktest() {
   const btnText = document.getElementById('btn-backtest-text');
   const errorBox = document.getElementById('error-box');
   const box = document.getElementById('backtest-box');
-  const content = document.getElementById('backtest-content');
   const warningBox = document.getElementById('backtest-warning');
+  const summaryBox = document.getElementById('backtest-summary');
+  const summaryBody = document.getElementById('backtest-summary-body');
   const scenarioBox = document.getElementById('backtest-scenarios');
-  const scenarioContent = document.getElementById('backtest-scenarios-content');
+  const scenarioBody = document.getElementById('backtest-scenarios-body');
+  const rowsBox = document.getElementById('backtest-rows');
+  const rowsBody = document.getElementById('backtest-rows-body');
 
   btn.disabled = true;
   btnText.textContent = 'Running...';
@@ -234,7 +279,6 @@ async function runBacktest() {
       throw new Error(body.error || 'Unknown error');
     }
     box.style.display = 'block';
-    content.textContent = JSON.stringify(body.data, null, 2);
     const warning = body.data.analytics && body.data.analytics.capacity_warning;
     if (warning) {
       warningBox.style.display = 'block';
@@ -243,12 +287,44 @@ async function runBacktest() {
       warningBox.style.display = 'none';
       warningBox.textContent = '';
     }
+    const summary = body.data.summary || {};
+    summaryBody.innerHTML = Object.entries(summary).map(([key, value]) => `
+      <tr><th>${key}</th><td>${typeof value === 'object' ? JSON.stringify(value) : value}</td></tr>
+    `).join('');
+    summaryBox.style.display = Object.keys(summary).length ? 'block' : 'none';
+
     if (body.data.scenario_summary && body.data.scenario_summary.length > 0) {
       scenarioBox.style.display = 'block';
-      scenarioContent.textContent = JSON.stringify(body.data.scenario_summary, null, 2);
+      scenarioBody.innerHTML = body.data.scenario_summary.map((row) => `
+        <tr>
+          <td>${row.scenario ?? ''}</td>
+          <td>${row.scenario_total_return ?? ''}</td>
+          <td>${row.benchmark_relative_return ?? ''}</td>
+          <td>${row.volatility ?? ''}</td>
+          <td>${row.worst_day ?? ''}</td>
+        </tr>
+      `).join('');
     } else {
       scenarioBox.style.display = 'none';
-      scenarioContent.textContent = '';
+      scenarioBody.innerHTML = '';
+    }
+
+    if (body.data.rows && body.data.rows.length > 0) {
+      rowsBox.style.display = 'block';
+      rowsBody.innerHTML = body.data.rows.slice(-10).map((row) => `
+        <tr>
+          <td>${row.date ?? ''}</td>
+          <td>${row.state ?? ''}</td>
+          <td>${row.turnover ?? ''}</td>
+          <td>${row.cost ?? ''}</td>
+          <td>${row.adv_20d ?? ''}</td>
+          <td>${row.capacity_estimate ?? ''}</td>
+          <td>${row.strategy_halt ?? ''}</td>
+        </tr>
+      `).join('');
+    } else {
+      rowsBox.style.display = 'none';
+      rowsBody.innerHTML = '';
     }
   } catch (err) {
     errorBox.textContent = err.message;
