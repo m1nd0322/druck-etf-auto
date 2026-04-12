@@ -230,6 +230,38 @@ function formatBacktestPercent(value, digits = 2) {
   })}%`;
 }
 
+const BACKTEST_SUMMARY_LABELS = {
+  start_value: 'Start Value',
+  end_value: 'End Value',
+  total_return: 'Total Return',
+  benchmark_total_return: 'Benchmark Total Return',
+  active_return: 'Active Return',
+  max_drawdown: 'Max Drawdown',
+  volatility: 'Volatility',
+  cagr: 'CAGR',
+  sharpe: 'Sharpe',
+  sortino: 'Sortino',
+  calmar: 'Calmar',
+  positions: 'Positions',
+  rebalances: 'Rebalances',
+  avg_turnover: 'Average Turnover',
+  total_cost: 'Total Cost',
+  total_slippage_cost: 'Total Slippage Cost',
+  total_impact_cost: 'Total Impact Cost',
+  total_liquidity_penalty: 'Total Liquidity Penalty',
+  halt_count: 'Halt Count',
+  avg_adv_20d: 'Average ADV 20d',
+  avg_participation_rate: 'Average Participation Rate',
+  avg_capacity_estimate: 'Average Capacity Estimate',
+  dropped_incomplete_assets: 'Dropped Incomplete Assets',
+  delisted_assets: 'Delisted Assets',
+  timeline_applied: 'Universe Timeline Applied',
+};
+
+function formatBacktestLabel(key) {
+  return BACKTEST_SUMMARY_LABELS[key] || key.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 async function runReport() {
   const btn = document.getElementById('btn-run');
   const btnText = document.getElementById('btn-text');
@@ -319,7 +351,7 @@ async function runBacktest() {
       } else if (typeof value === 'object') {
         rendered = JSON.stringify(value);
       }
-      return `<tr><th>${key}</th><td>${rendered}</td></tr>`;
+      return `<tr><th>${formatBacktestLabel(key)}</th><td>${rendered}</td></tr>`;
     }).join('');
     summaryBox.style.display = Object.keys(summary).length ? 'block' : 'none';
 
