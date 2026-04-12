@@ -41,6 +41,11 @@
 
   <div id="backtest-box" class="section" style="display:none">
     <h2>Backtest Snapshot</h2>
+    <div id="backtest-warning" class="alert alert-error" style="display:none"></div>
+    <div id="backtest-scenarios" style="display:none">
+      <h3>Scenario Summary</h3>
+      <pre id="backtest-scenarios-content"></pre>
+    </div>
     <pre id="backtest-content"></pre>
   </div>
 
@@ -214,6 +219,9 @@ async function runBacktest() {
   const errorBox = document.getElementById('error-box');
   const box = document.getElementById('backtest-box');
   const content = document.getElementById('backtest-content');
+  const warningBox = document.getElementById('backtest-warning');
+  const scenarioBox = document.getElementById('backtest-scenarios');
+  const scenarioContent = document.getElementById('backtest-scenarios-content');
 
   btn.disabled = true;
   btnText.textContent = 'Running...';
@@ -227,6 +235,21 @@ async function runBacktest() {
     }
     box.style.display = 'block';
     content.textContent = JSON.stringify(body.data, null, 2);
+    const warning = body.data.analytics && body.data.analytics.capacity_warning;
+    if (warning) {
+      warningBox.style.display = 'block';
+      warningBox.textContent = `${warning.message} (portfolio=${warning.portfolio_notional}, capacity=${warning.capacity_estimate}, ratio=${warning.capacity_ratio.toFixed(2)})`;
+    } else {
+      warningBox.style.display = 'none';
+      warningBox.textContent = '';
+    }
+    if (body.data.scenario_summary && body.data.scenario_summary.length > 0) {
+      scenarioBox.style.display = 'block';
+      scenarioContent.textContent = JSON.stringify(body.data.scenario_summary, null, 2);
+    } else {
+      scenarioBox.style.display = 'none';
+      scenarioContent.textContent = '';
+    }
   } catch (err) {
     errorBox.textContent = err.message;
     errorBox.style.display = 'block';

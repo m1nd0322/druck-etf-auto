@@ -227,6 +227,8 @@ async def api_backtest():
         _backtest_latest = {
             "summary": result.summary,
             "rows": result.rebalance_log.to_dict(orient="records"),
+            "scenario_summary": result.scenario_summary.to_dict(orient="records") if result.scenario_summary is not None else [],
+            "analytics": result.analytics or {},
         }
         return {"ok": True, "data": _backtest_latest}
     except Exception as exc:

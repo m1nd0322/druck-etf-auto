@@ -399,12 +399,27 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
     summary["timeline_applied"] = prep_diagnostics.get("timeline_applied", False)
 
     factor_regime = _compute_factor_and_regime_attribution(rebalance_log)
+    capacity_warning = None
+    if not rebalance_log.empty and "capacity_estimate" in rebalance_log.columns:
+        final_capacity = float(rebalance_log["capacity_estimate"].iloc[-1])
+        if final_capacity > 0:
+            capacity_ratio = bt_cfg.starting_capital / final_capacity
+            if capacity_ratio > 1.0:
+                capacity_warning = {
+                    "status": "warning",
+                    "message": "portfolio size exceeds estimated safe capacity",
+                    "portfolio_notional": bt_cfg.starting_capital,
+                    "capacity_estimate": final_capacity,
+                    "capacity_ratio": capacity_ratio,
+                }
+
     analytics = {
         "worst_day": float(daily_returns_series.min()) if not daily_returns_series.empty else 0.0,
         "best_day": float(daily_returns_series.max()) if not daily_returns_series.empty else 0.0,
         "avg_daily_return": float(daily_returns_series.mean()) if not daily_returns_series.empty else 0.0,
         "win_rate": float((daily_returns_series > 0).mean()) if not daily_returns_series.empty else 0.0,
         "factor_regime_attribution": factor_regime,
+        "capacity_warning": capacity_warning,
     }
 
     return BacktestResult(

@@ -139,6 +139,8 @@ def test_run_backtest_tracks_slippage_impact_and_liquidity_costs(monkeypatch, tm
     assert result.summary["avg_adv_20d"] > 0.0
     assert result.summary["avg_participation_rate"] == pytest.approx(cfg["backtest"]["max_participation_rate"])
     assert result.summary["avg_capacity_estimate"] > 0.0
+    assert result.analytics is not None
+    assert "capacity_warning" in result.analytics
 
 
 def test_run_backtest_drops_incomplete_assets_and_marks_delisted(monkeypatch, tmp_path):
@@ -176,3 +178,28 @@ def test_run_backtest_drops_incomplete_assets_and_marks_delisted(monkeypatch, tm
     assert result.summary["timeline_applied"] is True
     last_weights = result.rebalance_log.iloc[-1]["weights"]
     assert "DELIST" not in last_weights or last_weights.get("DELIST", 0.0) == 0.0
+
+
+def test_run_backtest_flags_capacity_warning_when_portfolio_exceeds_estimate(monkeypatch, tmp_path):
+    cfg = _base_cfg()
+    cfg["backtest"]["starting_capital"] = 1_000_000.0
+    idx = pd.date_range("2024-01-01", periods=420, freq="B")
+    px = pd.DataFrame({
+        "SPY": pd.Series([100 + i * 0.2 for i in range(420)], index=idx),
+        "SHY": pd.Series([90 + i * 0.05 for i in range(420)], index=idx),
+        "UUP": pd.Series([110 - i * 0.03 for i in range(420)], index=idx),
+        "HYG": pd.Series([95 + i * 0.08 for i in range(420)], index=idx),
+        "IEF": pd.Series([100 + i * 0.01 for i in range(420)], index=idx),
+        "TLT": pd.Series([98 + i * 0.02 for i in range(420)], index=idx),
+        "^VIX": pd.Series([16 + (i % 4) * 0.2 for i in range(420)], index=idx),
+    })
+    volume = pd.DataFrame({ticker: [10 + i for i in range(420)] for ticker in px.columns if ticker != "^VIX"}, index=idx)
+    volume_path = tmp_path / "thin_volume.csv"
+    volume.to_csv(volume_path)
+    cfg["backtest"]["volume_data_path"] = str(volume_path)
+    monkeypatch.setattr("druck.backtest.make_universe", lambda cfg: type("U", (), {"kr": [], "us": cfg["universe"]["us"]["tickers"]})())
+    monkeypatch.setattr("druck.backtest.fetch_prices", lambda tickers, start, end, prefer='auto', cache_dir=None, use_cache=True: px[tickers])
+    result = run_backtest(cfg)
+    assert result.analytics is not None
+    assert result.analytics["capacity_warning"] is not None
+    assert result.analytics["capacity_warning"]["status"] == "warning"

@@ -65,3 +65,24 @@ def test_runtime_api_resolves_row(tmp_path, monkeypatch):
     body = resp.json()
     assert body["ok"] is True
     assert body["row"]["status"] == "resolved"
+
+
+def test_backtest_api_returns_scenarios_and_analytics(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+
+    class DummyResult:
+        summary = {"total_return": 0.1}
+        rebalance_log = __import__("pandas").DataFrame([{"date": "2024-01-31", "turnover": 0.1}])
+        scenario_summary = __import__("pandas").DataFrame([{"scenario": "shock", "scenario_total_return": -0.2}])
+        analytics = {"capacity_warning": {"status": "warning", "message": "too large"}}
+
+    monkeypatch.setattr("druck.web.app._load_cfg", lambda: {"backtest": {}})
+    monkeypatch.setattr("druck.web.app.run_backtest", lambda cfg: DummyResult())
+
+    resp = client.post("/api/backtest")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["data"]["scenario_summary"][0]["scenario"] == "shock"
+    assert body["data"]["analytics"]["capacity_warning"]["status"] == "warning"
