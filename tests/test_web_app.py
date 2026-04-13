@@ -129,5 +129,8 @@ def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert body["warnings"]["backtest_capacity_warning"]["status"] == "warning"
+    assert body["warnings"]["backtest_capacity_warning"]["priority"] == 1
     assert body["warnings"]["backtest_scenario_warning"]["severity"] == "high"
+    assert body["warnings"]["backtest_scenario_warning"]["priority"] == 2
+    assert body["warnings"]["backtest_scenario_warning"]["message"] == "high severity backtest scenario detected"
     assert body["warnings"]["backtest_scenario_warning"]["scenario"] == "benchmark_gap_down"

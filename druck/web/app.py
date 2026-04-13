@@ -189,13 +189,21 @@ def _status_warnings() -> dict[str, Any]:
     scenario_warning = None
     if _backtest_latest is not None:
         analytics = _backtest_latest.get("analytics", {}) or {}
-        backtest_warning = analytics.get("capacity_warning")
+        raw_capacity_warning = analytics.get("capacity_warning")
+        if raw_capacity_warning is not None:
+            backtest_warning = {
+                **raw_capacity_warning,
+                "priority": 1,
+                "message": raw_capacity_warning.get("message", "portfolio size exceeds estimated safe capacity"),
+            }
         scenarios = _backtest_latest.get("scenario_summary", []) or []
         high_severity = [row for row in scenarios if str(row.get("severity", "")).lower() == "high"]
         if high_severity:
             top = high_severity[0]
             scenario_warning = {
                 "status": "warning",
+                "priority": 2,
+                "message": "high severity backtest scenario detected",
                 "scenario": top.get("scenario"),
                 "severity": top.get("severity"),
                 "tags": top.get("tags", []),
