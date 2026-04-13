@@ -186,11 +186,24 @@ _backtest_latest: dict | None = None
 
 def _status_warnings() -> dict[str, Any]:
     backtest_warning = None
+    scenario_warning = None
     if _backtest_latest is not None:
         analytics = _backtest_latest.get("analytics", {}) or {}
         backtest_warning = analytics.get("capacity_warning")
+        scenarios = _backtest_latest.get("scenario_summary", []) or []
+        high_severity = [row for row in scenarios if str(row.get("severity", "")).lower() == "high"]
+        if high_severity:
+            top = high_severity[0]
+            scenario_warning = {
+                "status": "warning",
+                "scenario": top.get("scenario"),
+                "severity": top.get("severity"),
+                "tags": top.get("tags", []),
+                "benchmark_relative_return": top.get("benchmark_relative_return"),
+            }
     return {
         "backtest_capacity_warning": backtest_warning,
+        "backtest_scenario_warning": scenario_warning,
     }
 
 

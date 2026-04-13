@@ -102,13 +102,19 @@ def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     client = TestClient(app)
 
-    from druck import web as web_pkg
     import druck.web.app as web_app
 
     web_app._backtest_latest = {
         "summary": {},
         "rows": [],
-        "scenario_summary": [],
+        "scenario_summary": [
+            {
+                "scenario": "benchmark_gap_down",
+                "severity": "high",
+                "tags": ["stress", "benchmark", "gap"],
+                "benchmark_relative_return": -0.08,
+            }
+        ],
         "analytics": {
             "capacity_warning": {
                 "status": "warning",
@@ -121,3 +127,5 @@ def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert body["warnings"]["backtest_capacity_warning"]["status"] == "warning"
+    assert body["warnings"]["backtest_scenario_warning"]["severity"] == "high"
+    assert body["warnings"]["backtest_scenario_warning"]["scenario"] == "benchmark_gap_down"
