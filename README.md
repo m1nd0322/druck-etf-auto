@@ -243,10 +243,14 @@ backtest:
     vol_multiplier: 1.5
     presets:
       - name: return_shock_and_vol_up
+        severity: high
+        tags: [stress, drawdown, volatility]
         return_shock: -0.05
         vol_multiplier: 1.5
         benchmark_shock: 0.0
       - name: benchmark_gap_down
+        severity: high
+        tags: [stress, benchmark, gap]
         return_shock: -0.02
         vol_multiplier: 1.2
         benchmark_shock: -0.04
@@ -267,16 +271,22 @@ When present, the backtest CLI now prints:
 The dashboard backtest view now also shows:
 - formatted summary metrics
 - capacity warning banner when portfolio size exceeds estimated safe capacity
+- scenario warning banner for high-severity presets
 - scenario results as a table instead of raw JSON
+- scenario severity and tag metadata
 - recent rebalance rows with formatted turnover, cost, ADV, and capacity values
 
 The status API now surfaces top-level warnings via:
 - `/api/status -> warnings.backtest_capacity_warning`
+- `/api/status -> warnings.backtest_scenario_warning`
 
 The default scenario table includes preset rows such as:
 - return shock plus volatility expansion
 - benchmark gap-down stress
 - volatility compression comparison
+
+Severity and tags are intended for operator-facing routing and readability.
+For example, `high` severity scenarios can be surfaced as dashboard/status warnings.
 
 ## 7. Moving toward live trading
 
@@ -346,6 +356,7 @@ python run_backtest.py
 Useful API endpoints:
 - `/api/status`
 - `/api/status -> warnings.backtest_capacity_warning`
+- `/api/status -> warnings.backtest_scenario_warning`
 - `/api/audit`
 - `/api/ack`
 - `/api/runtime`
