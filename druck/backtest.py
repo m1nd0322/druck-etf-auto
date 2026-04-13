@@ -279,6 +279,8 @@ def _compute_scenario_report(daily_returns: pd.Series, benchmark_returns: pd.Ser
         rows.append(
             {
                 "scenario": scenario_name,
+                "severity": str(preset.get("severity", "medium")),
+                "tags": list(preset.get("tags", [])),
                 "return_shock": return_shock,
                 "vol_multiplier": vol_multiplier,
                 "benchmark_shock": benchmark_shock,

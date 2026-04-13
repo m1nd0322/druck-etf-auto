@@ -94,14 +94,20 @@ backtest:
     vol_multiplier: 1.5
     presets:
       - name: return_shock_and_vol_up
+        severity: high
+        tags: [stress, drawdown, volatility]
         return_shock: -0.05
         vol_multiplier: 1.5
         benchmark_shock: 0.0
       - name: benchmark_gap_down
+        severity: high
+        tags: [stress, benchmark, gap]
         return_shock: -0.02
         vol_multiplier: 1.2
         benchmark_shock: -0.04
       - name: volatility_crush
+        severity: medium
+        tags: [comparison, volatility]
         return_shock: 0.0
         vol_multiplier: 0.7
         benchmark_shock: 0.0

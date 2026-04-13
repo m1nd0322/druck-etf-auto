@@ -191,6 +191,12 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
         if not isinstance(preset, dict):
             raise ConfigError(f"config.backtest.scenarios.presets[{i}] must be a mapping")
         _require(preset, "name", f"config.backtest.scenarios.presets[{i}]")
+        severity = _require(preset, "severity", f"config.backtest.scenarios.presets[{i}]")
+        if severity not in {"low", "medium", "high"}:
+            raise ConfigError(f"config.backtest.scenarios.presets[{i}].severity must be one of: low, medium, high")
+        tags = _require(preset, "tags", f"config.backtest.scenarios.presets[{i}]")
+        if not isinstance(tags, list) or not all(isinstance(tag, str) and tag.strip() for tag in tags):
+            raise ConfigError(f"config.backtest.scenarios.presets[{i}].tags must be a non-empty string list")
         _require_number(preset, "return_shock", f"config.backtest.scenarios.presets[{i}]")
         vol_multiplier = _require_number(preset, "vol_multiplier", f"config.backtest.scenarios.presets[{i}]")
         _require_number(preset, "benchmark_shock", f"config.backtest.scenarios.presets[{i}]")

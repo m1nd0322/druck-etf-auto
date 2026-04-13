@@ -50,9 +50,9 @@ def _base_cfg():
                 "stress_return_shock": -0.05,
                 "vol_multiplier": 1.5,
                 "presets": [
-                    {"name": "return_shock_and_vol_up", "return_shock": -0.05, "vol_multiplier": 1.5, "benchmark_shock": 0.0},
-                    {"name": "benchmark_gap_down", "return_shock": -0.02, "vol_multiplier": 1.2, "benchmark_shock": -0.04},
-                    {"name": "volatility_crush", "return_shock": 0.0, "vol_multiplier": 0.7, "benchmark_shock": 0.0},
+                    {"name": "return_shock_and_vol_up", "severity": "high", "tags": ["stress", "drawdown", "volatility"], "return_shock": -0.05, "vol_multiplier": 1.5, "benchmark_shock": 0.0},
+                    {"name": "benchmark_gap_down", "severity": "high", "tags": ["stress", "benchmark", "gap"], "return_shock": -0.02, "vol_multiplier": 1.2, "benchmark_shock": -0.04},
+                    {"name": "volatility_crush", "severity": "medium", "tags": ["comparison", "volatility"], "return_shock": 0.0, "vol_multiplier": 0.7, "benchmark_shock": 0.0},
                 ],
             },
             "walkforward": {"enabled": True, "train_days": 252, "test_days": 42, "step_days": 42},
@@ -92,7 +92,7 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert "factor_regime_attribution" in result.analytics
     assert result.scenario_summary is not None
     assert not result.scenario_summary.empty
-    assert set(["scenario", "scenario_total_return", "benchmark_relative_return"]).issubset(result.scenario_summary.columns)
+    assert set(["scenario", "severity", "tags", "scenario_total_return", "benchmark_relative_return"]).issubset(result.scenario_summary.columns)
     assert len(result.scenario_summary) >= 3
 
 
