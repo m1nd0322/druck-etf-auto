@@ -274,11 +274,13 @@ The dashboard backtest view now also shows:
 - scenario warning banner for high-severity presets
 - scenario results as a table instead of raw JSON
 - scenario severity and tag metadata
+- scenario tag filter buttons for operator slicing
 - recent rebalance rows with formatted turnover, cost, ADV, and capacity values
 
 The status API now surfaces top-level warnings via:
 - `/api/status -> warnings.backtest_capacity_warning`
 - `/api/status -> warnings.backtest_scenario_warning`
+- both warnings now use a consistent `message` + `priority` model for operator-facing consumption
 
 The default scenario table includes preset rows such as:
 - return shock plus volatility expansion
