@@ -103,6 +103,7 @@ h2 { font-size: 1.15rem; font-weight: 600; margin-bottom: .5rem; color: #333; }
 }
 .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 .alert-warning { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.alert-info { background: #dbeafe; color: #1d4ed8; border: 1px solid #93c5fd; }
 
 /* ===== Section ===== */
 .section { margin-bottom: 1.5rem; }

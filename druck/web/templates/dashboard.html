@@ -265,6 +265,13 @@ function formatBacktestLabel(key) {
   return BACKTEST_SUMMARY_LABELS[key] || key.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function scenarioSeverityClass(severity) {
+  const s = String(severity || '').toLowerCase();
+  if (s === 'high') return 'alert-error';
+  if (s === 'medium') return 'alert-warning';
+  return 'alert-info';
+}
+
 async function runReport() {
   const btn = document.getElementById('btn-run');
   const btnText = document.getElementById('btn-text');
@@ -346,8 +353,13 @@ async function runBacktest() {
     const scenarioWarning = body.data.scenario_summary && body.data.scenario_summary.find((row) => String(row.severity || '').toLowerCase() === 'high');
     if (scenarioWarning) {
       scenarioWarningBox.style.display = 'block';
-      scenarioWarningBox.textContent = `High severity scenario: ${formatBacktestLabel(scenarioWarning.scenario ?? '')} (${Array.isArray(scenarioWarning.tags) ? scenarioWarning.tags.join(', ') : ''}, benchmark relative ${formatBacktestPercent(scenarioWarning.benchmark_relative_return, 2)})`;
+      scenarioWarningBox.className = `alert ${scenarioSeverityClass(scenarioWarning.severity)}`;
+      scenarioWarningBox.textContent = `${formatBacktestLabel(scenarioWarning.severity ?? 'scenario')} severity scenario: ${formatBacktestLabel(scenarioWarning.scenario ?? '')} (${Array.isArray(scenarioWarning.tags) ? scenarioWarning.tags.join(', ') : ''}, benchmark relative ${formatBacktestPercent(scenarioWarning.benchmark_relative_return, 2)})`;
     } else {
+       scenarioWarningBox.style.display = 'none';
++      scenarioWarningBox.className = 'alert alert-error';
+       scenarioWarningBox.textContent = '';
+     }
       scenarioWarningBox.style.display = 'none';
       scenarioWarningBox.textContent = '';
     }
