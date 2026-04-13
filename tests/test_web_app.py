@@ -97,6 +97,7 @@ def test_dashboard_template_contains_backtest_sections():
     assert "Scenario Summary" in text
     assert "Recent Rebalance Rows" in text
     assert "backtest-scenario-warning" in text
+    assert "backtest-scenario-tags" in text
 
 
 def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):

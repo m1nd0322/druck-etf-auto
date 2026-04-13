@@ -55,6 +55,7 @@
 
     <div id="backtest-scenarios" style="display:none">
       <h3>Scenario Summary</h3>
+      <div id="backtest-scenario-tags" style="display:none; margin-bottom: .75rem;"></div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -279,6 +280,20 @@ function scenarioSeverityRank(severity) {
   return 2;
 }
 
+function renderScenarioRows(rows) {
+  return rows.map((row) => `
+    <tr>
+      <td>${formatBacktestLabel(row.scenario ?? '')}</td>
+      <td>${formatBacktestLabel(row.severity ?? '')}</td>
+      <td>${Array.isArray(row.tags) ? row.tags.join(', ') : ''}</td>
+      <td>${formatBacktestPercent(row.scenario_total_return, 2)}</td>
+      <td>${formatBacktestPercent(row.benchmark_relative_return, 2)}</td>
+      <td>${formatBacktestPercent(row.volatility, 2)}</td>
+      <td>${formatBacktestPercent(row.worst_day, 2)}</td>
+    </tr>
+  `).join('');
+}
+
 async function runReport() {
   const btn = document.getElementById('btn-run');
   const btnText = document.getElementById('btn-text');
@@ -334,6 +349,7 @@ async function runBacktest() {
   const summaryBox = document.getElementById('backtest-summary');
   const summaryBody = document.getElementById('backtest-summary-body');
   const scenarioBox = document.getElementById('backtest-scenarios');
+  const scenarioTagBox = document.getElementById('backtest-scenario-tags');
   const scenarioBody = document.getElementById('backtest-scenarios-body');
   const rowsBox = document.getElementById('backtest-rows');
   const rowsBody = document.getElementById('backtest-rows-body');
@@ -363,11 +379,8 @@ async function runBacktest() {
       scenarioWarningBox.className = `alert ${scenarioSeverityClass(scenarioWarning.severity)}`;
       scenarioWarningBox.textContent = `${formatBacktestLabel(scenarioWarning.severity ?? 'scenario')} severity scenario: ${formatBacktestLabel(scenarioWarning.scenario ?? '')} (${Array.isArray(scenarioWarning.tags) ? scenarioWarning.tags.join(', ') : ''}, benchmark relative ${formatBacktestPercent(scenarioWarning.benchmark_relative_return, 2)})`;
     } else {
-       scenarioWarningBox.style.display = 'none';
-+      scenarioWarningBox.className = 'alert alert-error';
-       scenarioWarningBox.textContent = '';
-     }
       scenarioWarningBox.style.display = 'none';
+      scenarioWarningBox.className = 'alert alert-error';
       scenarioWarningBox.textContent = '';
     }
     const summary = body.data.summary || {};
@@ -395,19 +408,29 @@ async function runBacktest() {
         const relB = Number(b.benchmark_relative_return ?? 0);
         return relA - relB;
       });
-      scenarioBody.innerHTML = orderedScenarios.map((row) => `
-        <tr>
-          <td>${formatBacktestLabel(row.scenario ?? '')}</td>
-          <td>${formatBacktestLabel(row.severity ?? '')}</td>
-          <td>${Array.isArray(row.tags) ? row.tags.join(', ') : ''}</td>
-          <td>${formatBacktestPercent(row.scenario_total_return, 2)}</td>
-          <td>${formatBacktestPercent(row.benchmark_relative_return, 2)}</td>
-          <td>${formatBacktestPercent(row.volatility, 2)}</td>
-          <td>${formatBacktestPercent(row.worst_day, 2)}</td>
-        </tr>
-      `).join('');
+      const uniqueTags = [...new Set(orderedScenarios.flatMap((row) => Array.isArray(row.tags) ? row.tags : []))].sort();
+      if (uniqueTags.length > 0) {
+        scenarioTagBox.style.display = 'block';
+        scenarioTagBox.innerHTML = ['<button class="btn btn-secondary" data-tag="__all">All</button>']
+          .concat(uniqueTags.map((tag) => `<button class="btn btn-secondary" data-tag="${tag}">${tag}</button>`))
+          .join(' ');
+        const renderFiltered = (tag) => {
+          const filtered = tag === '__all' ? orderedScenarios : orderedScenarios.filter((row) => Array.isArray(row.tags) && row.tags.includes(tag));
+          scenarioBody.innerHTML = renderScenarioRows(filtered);
+        };
+        scenarioTagBox.querySelectorAll('button[data-tag]').forEach((btn) => {
+          btn.addEventListener('click', () => renderFiltered(btn.dataset.tag));
+        });
+        renderFiltered('__all');
+      } else {
+        scenarioTagBox.style.display = 'none';
+        scenarioTagBox.innerHTML = '';
+        scenarioBody.innerHTML = renderScenarioRows(orderedScenarios);
+      }
     } else {
       scenarioBox.style.display = 'none';
+      scenarioTagBox.style.display = 'none';
+      scenarioTagBox.innerHTML = '';
       scenarioBody.innerHTML = '';
     }
 
