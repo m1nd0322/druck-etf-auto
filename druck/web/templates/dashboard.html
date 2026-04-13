@@ -42,6 +42,7 @@
   <div id="backtest-box" class="section" style="display:none">
     <h2>Backtest Snapshot</h2>
     <div id="backtest-warning" class="alert alert-error" style="display:none"></div>
+    <div id="backtest-scenario-warning" class="alert alert-error" style="display:none"></div>
 
     <div id="backtest-summary" style="display:none">
       <h3>Summary</h3>
@@ -315,6 +316,7 @@ async function runBacktest() {
   const errorBox = document.getElementById('error-box');
   const box = document.getElementById('backtest-box');
   const warningBox = document.getElementById('backtest-warning');
+  const scenarioWarningBox = document.getElementById('backtest-scenario-warning');
   const summaryBox = document.getElementById('backtest-summary');
   const summaryBody = document.getElementById('backtest-summary-body');
   const scenarioBox = document.getElementById('backtest-scenarios');
@@ -340,6 +342,14 @@ async function runBacktest() {
     } else {
       warningBox.style.display = 'none';
       warningBox.textContent = '';
+    }
+    const scenarioWarning = body.data.scenario_summary && body.data.scenario_summary.find((row) => String(row.severity || '').toLowerCase() === 'high');
+    if (scenarioWarning) {
+      scenarioWarningBox.style.display = 'block';
+      scenarioWarningBox.textContent = `High severity scenario: ${formatBacktestLabel(scenarioWarning.scenario ?? '')} (${Array.isArray(scenarioWarning.tags) ? scenarioWarning.tags.join(', ') : ''}, benchmark relative ${formatBacktestPercent(scenarioWarning.benchmark_relative_return, 2)})`;
+    } else {
+      scenarioWarningBox.style.display = 'none';
+      scenarioWarningBox.textContent = '';
     }
     const summary = body.data.summary || {};
     summaryBody.innerHTML = Object.entries(summary).map(([key, value]) => {
