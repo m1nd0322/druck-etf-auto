@@ -272,6 +272,13 @@ function scenarioSeverityClass(severity) {
   return 'alert-info';
 }
 
+function scenarioSeverityRank(severity) {
+  const s = String(severity || '').toLowerCase();
+  if (s === 'high') return 0;
+  if (s === 'medium') return 1;
+  return 2;
+}
+
 async function runReport() {
   const btn = document.getElementById('btn-run');
   const btnText = document.getElementById('btn-text');
@@ -381,7 +388,14 @@ async function runBacktest() {
 
     if (body.data.scenario_summary && body.data.scenario_summary.length > 0) {
       scenarioBox.style.display = 'block';
-      scenarioBody.innerHTML = body.data.scenario_summary.map((row) => `
+      const orderedScenarios = [...body.data.scenario_summary].sort((a, b) => {
+        const severityDiff = scenarioSeverityRank(a.severity) - scenarioSeverityRank(b.severity);
+        if (severityDiff !== 0) return severityDiff;
+        const relA = Number(a.benchmark_relative_return ?? 0);
+        const relB = Number(b.benchmark_relative_return ?? 0);
+        return relA - relB;
+      });
+      scenarioBody.innerHTML = orderedScenarios.map((row) => `
         <tr>
           <td>${formatBacktestLabel(row.scenario ?? '')}</td>
           <td>${formatBacktestLabel(row.severity ?? '')}</td>
