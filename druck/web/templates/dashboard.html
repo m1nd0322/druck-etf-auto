@@ -59,6 +59,8 @@
           <thead>
             <tr>
               <th>Scenario</th>
+              <th>Severity</th>
+              <th>Tags</th>
               <th>Total Return</th>
               <th>Benchmark Relative</th>
               <th>Volatility</th>
@@ -359,7 +361,9 @@ async function runBacktest() {
       scenarioBox.style.display = 'block';
       scenarioBody.innerHTML = body.data.scenario_summary.map((row) => `
         <tr>
-          <td>${row.scenario ?? ''}</td>
+          <td>${formatBacktestLabel(row.scenario ?? '')}</td>
+          <td>${formatBacktestLabel(row.severity ?? '')}</td>
+          <td>${Array.isArray(row.tags) ? row.tags.join(', ') : ''}</td>
           <td>${formatBacktestPercent(row.scenario_total_return, 2)}</td>
           <td>${formatBacktestPercent(row.benchmark_relative_return, 2)}</td>
           <td>${formatBacktestPercent(row.volatility, 2)}</td>
