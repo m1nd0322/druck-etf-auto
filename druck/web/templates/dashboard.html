@@ -43,6 +43,9 @@
     <h2>Backtest Snapshot</h2>
     <div id="backtest-warning" class="alert alert-error" style="display:none"></div>
     <div id="backtest-scenario-warning" class="alert alert-error" style="display:none"></div>
+    <div id="backtest-scenario-ack" style="display:none; margin-bottom: 1rem;">
+      <button id="backtest-scenario-ack-btn" class="btn btn-secondary" onclick="ackScenarioWarning()">Acknowledge Scenario Warning</button>
+    </div>
 
     <div id="backtest-summary" style="display:none">
       <h3>Summary</h3>
@@ -339,6 +342,28 @@ async function resolveRuntimeEvent(eventId) {
   window.location.reload();
 }
 
+let latestScenarioWarning = null;
+
+async function ackScenarioWarning() {
+  if (!latestScenarioWarning) return;
+  const note = window.prompt('Scenario acknowledgement note', latestScenarioWarning.note_template || 'reviewed') || '';
+  const resp = await fetch('/api/ack', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ack_type: 'scenario_warning_review',
+      status: 'acknowledged',
+      note,
+    })
+  });
+  const body = await resp.json();
+  if (!resp.ok || !body.ok) {
+    alert(body.error || 'Failed to acknowledge scenario warning');
+    return;
+  }
+  alert('Scenario warning acknowledged');
+}
+
 async function runBacktest() {
   const btn = document.getElementById('btn-backtest');
   const btnText = document.getElementById('btn-backtest-text');
@@ -346,6 +371,7 @@ async function runBacktest() {
   const box = document.getElementById('backtest-box');
   const warningBox = document.getElementById('backtest-warning');
   const scenarioWarningBox = document.getElementById('backtest-scenario-warning');
+  const ackBox = document.getElementById('backtest-scenario-ack');
   const summaryBox = document.getElementById('backtest-summary');
   const summaryBody = document.getElementById('backtest-summary-body');
   const scenarioBox = document.getElementById('backtest-scenarios');
@@ -375,16 +401,20 @@ async function runBacktest() {
     }
     const scenarioWarning = body.data.scenario_summary && body.data.scenario_summary.find((row) => String(row.severity || '').toLowerCase() === 'high');
     if (scenarioWarning) {
+      latestScenarioWarning = scenarioWarning;
       scenarioWarningBox.style.display = 'block';
       scenarioWarningBox.className = `alert ${scenarioSeverityClass(scenarioWarning.severity)}`;
       const reviewText = scenarioWarning.review_required ? 'review required' : 'review optional';
       const actionText = scenarioWarning.operator_action ? ` action: ${scenarioWarning.operator_action}.` : '';
       const noteText = scenarioWarning.note_template ? ` note template: ${scenarioWarning.note_template}` : '';
       scenarioWarningBox.textContent = `${formatBacktestLabel(scenarioWarning.severity ?? 'scenario')} severity scenario: ${formatBacktestLabel(scenarioWarning.scenario ?? '')} (${Array.isArray(scenarioWarning.tags) ? scenarioWarning.tags.join(', ') : ''}, benchmark relative ${formatBacktestPercent(scenarioWarning.benchmark_relative_return, 2)}, ${reviewText}).${actionText}${noteText}`;
+      ackBox.style.display = scenarioWarning.review_required ? 'block' : 'none';
     } else {
+      latestScenarioWarning = null;
       scenarioWarningBox.style.display = 'none';
       scenarioWarningBox.className = 'alert alert-error';
       scenarioWarningBox.textContent = '';
+      ackBox.style.display = 'none';
     }
     const summary = body.data.summary || {};
     summaryBody.innerHTML = Object.entries(summary).map(([key, value]) => {
