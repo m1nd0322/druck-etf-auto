@@ -278,6 +278,7 @@ The dashboard backtest view now also shows:
 - formatted summary metrics
 - capacity warning banner when portfolio size exceeds estimated safe capacity
 - scenario warning banner for high-severity presets
+- scenario operator guidance (`operator_action`, `review_required`, `note_template`)
 - scenario results as a table instead of raw JSON
 - scenario severity and tag metadata
 - scenario tag filter buttons for operator slicing

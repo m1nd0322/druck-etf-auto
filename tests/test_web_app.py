@@ -100,6 +100,7 @@ def test_dashboard_template_contains_backtest_sections():
     assert "backtest-scenario-tags" in text
     assert "btn-filter-active" in text
     assert "tag-count" in text
+    assert "note template" in text
     assert "review required" in text or "operator_action" in text
 
 
