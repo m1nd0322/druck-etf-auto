@@ -377,7 +377,9 @@ async function runBacktest() {
     if (scenarioWarning) {
       scenarioWarningBox.style.display = 'block';
       scenarioWarningBox.className = `alert ${scenarioSeverityClass(scenarioWarning.severity)}`;
-      scenarioWarningBox.textContent = `${formatBacktestLabel(scenarioWarning.severity ?? 'scenario')} severity scenario: ${formatBacktestLabel(scenarioWarning.scenario ?? '')} (${Array.isArray(scenarioWarning.tags) ? scenarioWarning.tags.join(', ') : ''}, benchmark relative ${formatBacktestPercent(scenarioWarning.benchmark_relative_return, 2)})`;
+      const reviewText = scenarioWarning.review_required ? 'review required' : 'review optional';
+      const actionText = scenarioWarning.operator_action ? ` action: ${scenarioWarning.operator_action}.` : '';
+      scenarioWarningBox.textContent = `${formatBacktestLabel(scenarioWarning.severity ?? 'scenario')} severity scenario: ${formatBacktestLabel(scenarioWarning.scenario ?? '')} (${Array.isArray(scenarioWarning.tags) ? scenarioWarning.tags.join(', ') : ''}, benchmark relative ${formatBacktestPercent(scenarioWarning.benchmark_relative_return, 2)}, ${reviewText}).${actionText}`;
     } else {
       scenarioWarningBox.style.display = 'none';
       scenarioWarningBox.className = 'alert alert-error';

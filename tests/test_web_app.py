@@ -100,6 +100,7 @@ def test_dashboard_template_contains_backtest_sections():
     assert "backtest-scenario-tags" in text
     assert "btn-filter-active" in text
     assert "tag-count" in text
+    assert "review required" in text or "operator_action" in text
 
 
 def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):
