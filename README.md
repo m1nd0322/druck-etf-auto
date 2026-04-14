@@ -279,6 +279,7 @@ The dashboard backtest view now also shows:
 - capacity warning banner when portfolio size exceeds estimated safe capacity
 - scenario warning banner for high-severity presets
 - scenario operator guidance (`operator_action`, `review_required`, `note_template`)
+- scenario acknowledgement action that writes to `/api/ack`
 - scenario results as a table instead of raw JSON
 - scenario severity and tag metadata
 - scenario tag filter buttons for operator slicing
@@ -301,6 +302,8 @@ The operator-facing preset fields are:
 - `operator_action` - short recommended action for the operator
 - `review_required` - whether the scenario should force explicit human review
 - `note_template` - starter language for operator notes or acknowledgements
+
+When `review_required` is true, the dashboard can raise an acknowledgement action and send the operator note through `/api/ack`.
 
 ## 7. Moving toward live trading
 
