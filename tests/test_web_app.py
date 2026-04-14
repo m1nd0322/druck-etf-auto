@@ -116,6 +116,9 @@ def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):
                 "scenario": "benchmark_gap_down",
                 "severity": "high",
                 "tags": ["stress", "benchmark", "gap"],
+                "operator_action": "compare active risk versus benchmark and review hedge stance",
+                "review_required": True,
+                "note_template": "Check benchmark-relative weakness and decide whether to de-risk or hold.",
                 "benchmark_relative_return": -0.08,
             }
         ],
@@ -136,3 +139,5 @@ def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):
     assert body["warnings"]["backtest_scenario_warning"]["priority"] == 2
     assert body["warnings"]["backtest_scenario_warning"]["message"] == "high severity backtest scenario detected"
     assert body["warnings"]["backtest_scenario_warning"]["scenario"] == "benchmark_gap_down"
+    assert body["warnings"]["backtest_scenario_warning"]["review_required"] is True
+    assert body["warnings"]["backtest_scenario_warning"]["operator_action"] == "compare active risk versus benchmark and review hedge stance"

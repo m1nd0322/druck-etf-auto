@@ -207,6 +207,9 @@ def _status_warnings() -> dict[str, Any]:
                 "scenario": top.get("scenario"),
                 "severity": top.get("severity"),
                 "tags": top.get("tags", []),
+                "operator_action": top.get("operator_action"),
+                "review_required": top.get("review_required"),
+                "note_template": top.get("note_template"),
                 "benchmark_relative_return": top.get("benchmark_relative_return"),
             }
     return {
