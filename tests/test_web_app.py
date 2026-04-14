@@ -98,6 +98,8 @@ def test_dashboard_template_contains_backtest_sections():
     assert "Recent Rebalance Rows" in text
     assert "backtest-scenario-warning" in text
     assert "backtest-scenario-tags" in text
+    assert "btn-filter-active" in text
+    assert "tag-count" in text
 
 
 def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):

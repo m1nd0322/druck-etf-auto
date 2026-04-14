@@ -73,6 +73,9 @@ h2 { font-size: 1.15rem; font-weight: 600; margin-bottom: .5rem; color: #333; }
 .btn-primary:disabled { background: #8d9db6; cursor: not-allowed; }
 .btn-secondary { background: #e2e8f0; color: #333; }
 .btn-secondary:hover { background: #cbd5e1; }
+.btn-filter-active { background: #1d4ed8; color: #fff; }
+.btn-filter-active:hover { background: #1e40af; }
+.tag-count { opacity: .8; font-size: .8em; }
 
 /* ===== Spinner ===== */
 .spinner {

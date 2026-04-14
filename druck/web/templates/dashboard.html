@@ -411,11 +411,18 @@ async function runBacktest() {
       const uniqueTags = [...new Set(orderedScenarios.flatMap((row) => Array.isArray(row.tags) ? row.tags : []))].sort();
       if (uniqueTags.length > 0) {
         scenarioTagBox.style.display = 'block';
-        scenarioTagBox.innerHTML = ['<button class="btn btn-secondary" data-tag="__all">All</button>']
-          .concat(uniqueTags.map((tag) => `<button class="btn btn-secondary" data-tag="${tag}">${tag}</button>`))
+        const tagCounts = Object.fromEntries(uniqueTags.map((tag) => [tag, orderedScenarios.filter((row) => Array.isArray(row.tags) && row.tags.includes(tag)).length]));
+        scenarioTagBox.innerHTML = ['<button class="btn btn-secondary btn-filter-active" data-tag="__all">All <span class="tag-count">(' + orderedScenarios.length + ')</span></button>']
+          .concat(uniqueTags.map((tag) => `<button class="btn btn-secondary" data-tag="${tag}">${tag} <span class="tag-count">(${tagCounts[tag]})</span></button>`))
           .join(' ');
+        const setActiveTag = (tag) => {
+          scenarioTagBox.querySelectorAll('button[data-tag]').forEach((btn) => {
+            btn.classList.toggle('btn-filter-active', btn.dataset.tag === tag);
+          });
+        };
         const renderFiltered = (tag) => {
           const filtered = tag === '__all' ? orderedScenarios : orderedScenarios.filter((row) => Array.isArray(row.tags) && row.tags.includes(tag));
+          setActiveTag(tag);
           scenarioBody.innerHTML = renderScenarioRows(filtered);
         };
         scenarioTagBox.querySelectorAll('button[data-tag]').forEach((btn) => {
