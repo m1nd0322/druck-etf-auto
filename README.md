@@ -245,12 +245,18 @@ backtest:
       - name: return_shock_and_vol_up
         severity: high
         tags: [stress, drawdown, volatility]
+        operator_action: reduce risk and review exposures
+        review_required: true
+        note_template: "Review drawdown-sensitive positions and confirm defensive posture."
         return_shock: -0.05
         vol_multiplier: 1.5
         benchmark_shock: 0.0
       - name: benchmark_gap_down
         severity: high
         tags: [stress, benchmark, gap]
+        operator_action: compare active risk versus benchmark and review hedge stance
+        review_required: true
+        note_template: "Check benchmark-relative weakness and decide whether to de-risk or hold."
         return_shock: -0.02
         vol_multiplier: 1.2
         benchmark_shock: -0.04
@@ -289,6 +295,11 @@ The default scenario table includes preset rows such as:
 
 Severity and tags are intended for operator-facing routing and readability.
 For example, `high` severity scenarios can be surfaced as dashboard/status warnings.
+
+The operator-facing preset fields are:
+- `operator_action` - short recommended action for the operator
+- `review_required` - whether the scenario should force explicit human review
+- `note_template` - starter language for operator notes or acknowledgements
 
 ## 7. Moving toward live trading
 

@@ -96,18 +96,27 @@ backtest:
       - name: return_shock_and_vol_up
         severity: high
         tags: [stress, drawdown, volatility]
+        operator_action: reduce risk and review exposures
+        review_required: true
+        note_template: "Review drawdown-sensitive positions and confirm defensive posture."
         return_shock: -0.05
         vol_multiplier: 1.5
         benchmark_shock: 0.0
       - name: benchmark_gap_down
         severity: high
         tags: [stress, benchmark, gap]
+        operator_action: compare active risk versus benchmark and review hedge stance
+        review_required: true
+        note_template: "Check benchmark-relative weakness and decide whether to de-risk or hold."
         return_shock: -0.02
         vol_multiplier: 1.2
         benchmark_shock: -0.04
       - name: volatility_crush
         severity: medium
         tags: [comparison, volatility]
+        operator_action: monitor regime shift assumptions
+        review_required: false
+        note_template: "Confirm whether lower-volatility assumptions still match current market structure."
         return_shock: 0.0
         vol_multiplier: 0.7
         benchmark_shock: 0.0

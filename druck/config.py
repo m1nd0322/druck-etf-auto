@@ -197,6 +197,9 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
         tags = _require(preset, "tags", f"config.backtest.scenarios.presets[{i}]")
         if not isinstance(tags, list) or not all(isinstance(tag, str) and tag.strip() for tag in tags):
             raise ConfigError(f"config.backtest.scenarios.presets[{i}].tags must be a non-empty string list")
+        _require(preset, "operator_action", f"config.backtest.scenarios.presets[{i}]")
+        _require_bool(preset, "review_required", f"config.backtest.scenarios.presets[{i}]")
+        _require(preset, "note_template", f"config.backtest.scenarios.presets[{i}]")
         _require_number(preset, "return_shock", f"config.backtest.scenarios.presets[{i}]")
         vol_multiplier = _require_number(preset, "vol_multiplier", f"config.backtest.scenarios.presets[{i}]")
         _require_number(preset, "benchmark_shock", f"config.backtest.scenarios.presets[{i}]")
