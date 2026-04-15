@@ -39,6 +39,7 @@ def test_score_universe_sorts_by_score_descending():
         "B": pd.Series([100 + i * 0.3 for i in range(300)], index=idx),
         "C": pd.Series([100 + (-1) ** i * 0.5 + i * 0.1 for i in range(300)], index=idx),
     })
-    sw = {"momentum": 0.55, "trend": 0.25, "vol_penalty": 0.10, "dd_penalty": 0.10}
+    sw = {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "vol_penalty": 0.10, "dd_penalty": 0.10}
     scores = score_universe(prices, sw)
     assert list(scores.index) == list(scores.sort_values("score", ascending=False).index)
+    assert {"persistence", "recovery", "downside_efficiency"}.issubset(scores.columns)

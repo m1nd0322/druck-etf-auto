@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Tuple
 import numpy as np
 import pandas as pd
-from .features import momentum_score, trend_score, rolling_vol, max_drawdown, zscore, sma, trailing_drawdown
+from .features import momentum_score, trend_score, rolling_vol, max_drawdown, zscore, sma, trailing_drawdown, persistence_score, recovery_score, downside_efficiency
 
 @dataclass
 class SelectionResult:
@@ -21,6 +21,9 @@ def score_universe(prices: pd.DataFrame, sw: dict) -> pd.DataFrame:
             'ticker':t,
             'momentum':momentum_score(p),
             'trend':trend_score(p),
+            'persistence': persistence_score(p, 126),
+            'recovery': recovery_score(p, 126),
+            'downside_efficiency': downside_efficiency(p, 126),
             'vol':rolling_vol(p,63),
             'mdd_1y':max_drawdown(p,252),
         })
@@ -29,9 +32,20 @@ def score_universe(prices: pd.DataFrame, sw: dict) -> pd.DataFrame:
         return df
     df['mom_z']=zscore(df['momentum'])
     df['trend_z']=zscore(df['trend'].fillna(0.0))
+    df['persist_z']=zscore(df['persistence'].fillna(0.0))
+    df['recovery_z']=zscore(df['recovery'].fillna(0.0))
+    df['downside_z']=zscore(df['downside_efficiency'].fillna(0.0))
     df['vol_z']=zscore(df['vol'])
     df['dd_z']=zscore(df['mdd_1y'])
-    df['score']=(float(sw['momentum'])*df['mom_z'] + float(sw['trend'])*df['trend_z'] - float(sw['vol_penalty'])*df['vol_z'] - float(sw['dd_penalty'])*df['dd_z'])
+    df['score']=(
+        float(sw['momentum'])*df['mom_z']
+        + float(sw['trend'])*df['trend_z']
+        + float(sw.get('persistence', 0.20))*df['persist_z']
+        + float(sw.get('recovery', 0.15))*df['recovery_z']
+        + float(sw.get('downside_efficiency', 0.15))*df['downside_z']
+        - float(sw['vol_penalty'])*df['vol_z']
+        - float(sw['dd_penalty'])*df['dd_z']
+    )
     return df.sort_values('score', ascending=False)
 
 def allocate_weights(selected: pd.DataFrame, max_weight: float) -> pd.Series:

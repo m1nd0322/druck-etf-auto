@@ -55,5 +55,40 @@ def momentum_score(prices: pd.Series) -> float:
         return float("nan")
     return float(0.5 * r3 + 0.3 * r6 + 0.2 * r12)
 
+
+def persistence_score(prices: pd.Series, lookback: int = 126) -> float:
+    r = prices.pct_change().dropna()
+    if len(r) < lookback:
+        return float("nan")
+    window = r.iloc[-lookback:]
+    positive_ratio = float((window > 0).mean())
+    streak_bonus = float((window.rolling(5).mean().dropna() > 0).mean()) if len(window) >= 5 else 0.0
+    return float(0.7 * positive_ratio + 0.3 * streak_bonus)
+
+
+def recovery_score(prices: pd.Series, lookback: int = 126) -> float:
+    if len(prices) < lookback:
+        return float("nan")
+    p = prices.iloc[-lookback:]
+    peak = p.cummax()
+    drawdown = p / peak - 1.0
+    worst = float(drawdown.min())
+    current = float(drawdown.iloc[-1])
+    if worst >= 0:
+        return 1.0
+    return float(1.0 - min(max(current / worst, 0.0), 1.5))
+
+
+def downside_efficiency(prices: pd.Series, lookback: int = 126) -> float:
+    if len(prices) < lookback + 1:
+        return float("nan")
+    p = prices.iloc[-(lookback + 1):]
+    total_return = float(p.iloc[-1] / p.iloc[0] - 1.0)
+    drawdown = abs(max_drawdown(p, lookback=min(lookback, len(p))))
+    negative_days = float((p.pct_change().dropna() < 0).mean())
+    penalty = drawdown + negative_days + 1e-12
+    return float(total_return / penalty)
+
+
 def zscore(s: pd.Series) -> pd.Series:
     return (s - s.mean()) / (s.std(ddof=0) + 1e-12)

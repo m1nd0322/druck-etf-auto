@@ -305,6 +305,11 @@ The operator-facing preset fields are:
 
 When `review_required` is true, the dashboard can raise an acknowledgement action and send the operator note through `/api/ack`.
 
+The selection score is no longer just momentum plus trend. It now also includes:
+- `persistence` - how consistently returns have stayed positive
+- `recovery` - how much an asset has recovered from prior drawdown
+- `downside_efficiency` - total return earned per unit of downside burden
+
 ## 7. Moving toward live trading
 
 Live trading should be staged.
