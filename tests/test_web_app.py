@@ -99,6 +99,7 @@ def test_dashboard_template_contains_backtest_sections():
     text = dashboard_path.read_text(encoding="utf-8")
     assert "Backtest Snapshot" in text
     assert "Selection Score Comparison" in text
+    assert "Legacy vs Alpha Top Picks" in text
     assert "Scenario Summary" in text
     assert "Recent Rebalance Rows" in text
     assert "backtest-scenario-warning" in text
