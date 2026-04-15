@@ -56,6 +56,15 @@
       </div>
     </div>
 
+    <div id="backtest-score-comparison" style="display:none">
+      <h3>Selection Score Comparison</h3>
+      <div class="table-wrap">
+        <table>
+          <tbody id="backtest-score-comparison-body"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div id="backtest-scenarios" style="display:none">
       <h3>Scenario Summary</h3>
       <div id="backtest-scenario-tags" style="display:none; margin-bottom: .75rem;"></div>
@@ -374,6 +383,8 @@ async function runBacktest() {
   const ackBox = document.getElementById('backtest-scenario-ack');
   const summaryBox = document.getElementById('backtest-summary');
   const summaryBody = document.getElementById('backtest-summary-body');
+  const scoreComparisonBox = document.getElementById('backtest-score-comparison');
+  const scoreComparisonBody = document.getElementById('backtest-score-comparison-body');
   const scenarioBox = document.getElementById('backtest-scenarios');
   const scenarioTagBox = document.getElementById('backtest-scenario-tags');
   const scenarioBody = document.getElementById('backtest-scenarios-body');
@@ -431,6 +442,13 @@ async function runBacktest() {
       return `<tr><th>${formatBacktestLabel(key)}</th><td>${rendered}</td></tr>`;
     }).join('');
     summaryBox.style.display = Object.keys(summary).length ? 'block' : 'none';
+
+    const scoreComparison = body.data.analytics && body.data.analytics.selection_score_comparison ? body.data.analytics.selection_score_comparison : {};
+    scoreComparisonBody.innerHTML = Object.entries(scoreComparison).map(([key, value]) => {
+      const rendered = typeof value === 'number' ? formatBacktestNumber(value, 4) : value;
+      return `<tr><th>${formatBacktestLabel(key)}</th><td>${rendered}</td></tr>`;
+    }).join('');
+    scoreComparisonBox.style.display = Object.keys(scoreComparison).length ? 'block' : 'none';
 
     if (body.data.scenario_summary && body.data.scenario_summary.length > 0) {
       scenarioBox.style.display = 'block';

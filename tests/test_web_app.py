@@ -75,7 +75,10 @@ def test_backtest_api_returns_scenarios_and_analytics(tmp_path, monkeypatch):
         summary = {"total_return": 0.1}
         rebalance_log = __import__("pandas").DataFrame([{"date": "2024-01-31", "turnover": 0.1}])
         scenario_summary = __import__("pandas").DataFrame([{"scenario": "shock", "scenario_total_return": -0.2}])
-        analytics = {"capacity_warning": {"status": "warning", "message": "too large"}}
+        analytics = {
+            "capacity_warning": {"status": "warning", "message": "too large"},
+            "selection_score_comparison": {"avg_score_uplift": 0.12, "avg_persistence": 0.55},
+        }
 
     monkeypatch.setattr("druck.web.app._load_cfg", lambda: {"backtest": {}})
     monkeypatch.setattr("druck.web.app.run_backtest", lambda cfg: DummyResult())
@@ -86,6 +89,7 @@ def test_backtest_api_returns_scenarios_and_analytics(tmp_path, monkeypatch):
     assert body["ok"] is True
     assert body["data"]["scenario_summary"][0]["scenario"] == "shock"
     assert body["data"]["analytics"]["capacity_warning"]["status"] == "warning"
+    assert body["data"]["analytics"]["selection_score_comparison"]["avg_score_uplift"] == 0.12
 
 
 def test_dashboard_template_contains_backtest_sections():
@@ -94,6 +98,7 @@ def test_dashboard_template_contains_backtest_sections():
     dashboard_path = Path(__file__).resolve().parents[1] / "druck" / "web" / "templates" / "dashboard.html"
     text = dashboard_path.read_text(encoding="utf-8")
     assert "Backtest Snapshot" in text
+    assert "Selection Score Comparison" in text
     assert "Scenario Summary" in text
     assert "Recent Rebalance Rows" in text
     assert "backtest-scenario-warning" in text
