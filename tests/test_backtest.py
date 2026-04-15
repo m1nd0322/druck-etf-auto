@@ -91,6 +91,9 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert result.walkforward_summary is not None
     assert "factor_regime_attribution" in result.analytics
     assert "selection_score_comparison" in result.analytics
+    assert "avg_overlap_ratio" in result.analytics["selection_score_comparison"]
+    assert "latest_legacy_top_picks" in result.analytics["selection_score_comparison"]
+    assert "latest_alpha_top_picks" in result.analytics["selection_score_comparison"]
     assert result.scenario_summary is not None
     assert not result.scenario_summary.empty
     assert set(["scenario", "severity", "tags", "operator_action", "review_required", "note_template", "scenario_total_return", "benchmark_relative_return"]).issubset(result.scenario_summary.columns)

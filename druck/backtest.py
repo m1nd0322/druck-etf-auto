@@ -356,6 +356,10 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
             equity_points.append((ts, equity))
             daily_returns.append((ts, float(r)))
 
+        legacy_top = selected.sort_values('legacy_score', ascending=False).head(len(selected)).index.tolist() if not selected.empty and 'legacy_score' in selected.columns else []
+        alpha_top = selected.sort_values('score', ascending=False).head(len(selected)).index.tolist() if not selected.empty else []
+        overlap = len(set(legacy_top) & set(alpha_top))
+
         rebalance_rows.append(
             {
                 "date": dt,
@@ -380,6 +384,10 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
                 "selected_avg_recovery": float(selected["recovery"].mean()) if not selected.empty and "recovery" in selected.columns else 0.0,
                 "selected_avg_downside_efficiency": float(selected["downside_efficiency"].mean()) if not selected.empty and "downside_efficiency" in selected.columns else 0.0,
                 "selected_avg_score_uplift": float(selected["score_uplift"].mean()) if not selected.empty and "score_uplift" in selected.columns else 0.0,
+                "legacy_alpha_overlap": overlap,
+                "legacy_alpha_overlap_ratio": float(overlap / max(len(alpha_top), 1)) if alpha_top else 0.0,
+                "legacy_top_picks": legacy_top,
+                "alpha_top_picks": alpha_top,
                 "selected_avg_vol": float(selected["vol"].mean()) if not selected.empty and "vol" in selected.columns else 0.0,
                 "weights": current_weights.to_dict(),
                 "cuts": cuts.to_dict(orient="records") if hasattr(cuts, "to_dict") else [],
@@ -434,6 +442,9 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
             "avg_persistence": float(rebalance_log['selected_avg_persistence'].mean()) if not rebalance_log.empty and 'selected_avg_persistence' in rebalance_log.columns else 0.0,
             "avg_recovery": float(rebalance_log['selected_avg_recovery'].mean()) if not rebalance_log.empty and 'selected_avg_recovery' in rebalance_log.columns else 0.0,
             "avg_downside_efficiency": float(rebalance_log['selected_avg_downside_efficiency'].mean()) if not rebalance_log.empty and 'selected_avg_downside_efficiency' in rebalance_log.columns else 0.0,
+            "avg_overlap_ratio": float(rebalance_log['legacy_alpha_overlap_ratio'].mean()) if not rebalance_log.empty and 'legacy_alpha_overlap_ratio' in rebalance_log.columns else 0.0,
+            "latest_legacy_top_picks": rebalance_log.iloc[-1]['legacy_top_picks'] if not rebalance_log.empty and 'legacy_top_picks' in rebalance_log.columns else [],
+            "latest_alpha_top_picks": rebalance_log.iloc[-1]['alpha_top_picks'] if not rebalance_log.empty and 'alpha_top_picks' in rebalance_log.columns else [],
         },
     }
 
