@@ -94,6 +94,9 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert "avg_overlap_ratio" in result.analytics["selection_score_comparison"]
     assert "latest_legacy_top_picks" in result.analytics["selection_score_comparison"]
     assert "latest_alpha_top_picks" in result.analytics["selection_score_comparison"]
+    assert "strategy_comparison" in result.analytics
+    assert "return_delta" in result.analytics["strategy_comparison"]
+    assert "active_return_delta" in result.analytics["strategy_comparison"]
     assert result.scenario_summary is not None
     assert not result.scenario_summary.empty
     assert set(["scenario", "severity", "tags", "operator_action", "review_required", "note_template", "scenario_total_return", "benchmark_relative_return"]).issubset(result.scenario_summary.columns)

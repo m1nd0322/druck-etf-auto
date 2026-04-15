@@ -21,6 +21,9 @@ except ImportError as exc:
 class Universe:
     kr: List[str]
     us: List[str]
+    us_factor: List[str] | None = None
+    us_sector: List[str] | None = None
+    us_country: List[str] | None = None
 
 def _ensure_dir(p: str):
     os.makedirs(p, exist_ok=True)
@@ -72,8 +75,20 @@ def make_universe(cfg: dict) -> Universe:
         )
     else:
         kr = list(dict.fromkeys(kr_cfg.get('tickers', []) + kr_cfg.get('whitelist_tickers', [])))
-    us = list(dict.fromkeys(ucfg['us'].get('tickers', [])))
-    return Universe(kr=kr, us=us)
+
+    us_cfg = ucfg['us']
+    us_base = us_cfg.get('tickers', [])
+    us_factor = us_cfg.get('factor_tickers', [])
+    us_sector = us_cfg.get('sector_tickers', [])
+    us_country = us_cfg.get('country_tickers', [])
+    us = list(dict.fromkeys(us_base + us_factor + us_sector + us_country))
+    return Universe(
+        kr=kr,
+        us=us,
+        us_factor=list(dict.fromkeys(us_factor)),
+        us_sector=list(dict.fromkeys(us_sector)),
+        us_country=list(dict.fromkeys(us_country)),
+    )
 
 def fetch_prices_yf(tickers: List[str], start: str, end: str) -> pd.DataFrame:
     import yfinance as yf

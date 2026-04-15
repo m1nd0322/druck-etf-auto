@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from druck.data import _cache_key, fetch_prices
+from druck.data import _cache_key, fetch_prices, make_universe
 
 
 def test_cache_key_is_stable():
@@ -22,3 +22,25 @@ def test_fetch_prices_uses_cache_when_available(tmp_path):
     result = fetch_prices(["SPY"], "2024-01-01", "2024-01-03", cache_dir=str(cache_dir), use_cache=True)
     assert list(result.columns) == ["SPY"]
     assert len(result) == 2
+
+
+def test_make_universe_combines_factor_sector_and_country_sleeves():
+    cfg = {
+        "universe": {
+            "kr": {"auto_generate": False, "tickers": []},
+            "us": {
+                "tickers": ["SPY", "QQQ"],
+                "factor_tickers": ["MTUM", "QUAL"],
+                "sector_tickers": ["XLK", "XLF"],
+                "country_tickers": ["EEM", "EWJ"],
+            },
+        }
+    }
+    u = make_universe(cfg)
+    assert "SPY" in u.us
+    assert "MTUM" in u.us
+    assert "XLK" in u.us
+    assert "EEM" in u.us
+    assert u.us_factor == ["MTUM", "QUAL"]
+    assert u.us_sector == ["XLK", "XLF"]
+    assert u.us_country == ["EEM", "EWJ"]

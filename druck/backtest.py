@@ -492,6 +492,25 @@ def _run_walkforward(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame, pr
     return pd.DataFrame(rows)
 
 
+def _legacy_score_weights(cfg: dict) -> dict[str, Any]:
+    out = dict(cfg.get("selection", {}).get("score_weights", {}))
+    out["momentum"] = 0.55
+    out["trend"] = 0.25
+    out["vol_penalty"] = 0.10
+    out["dd_penalty"] = 0.10
+    out["persistence"] = 0.0
+    out["recovery"] = 0.0
+    out["downside_efficiency"] = 0.0
+    return out
+
+
+def _with_score_weights(cfg: dict, score_weights: dict[str, Any]) -> dict[str, Any]:
+    cloned = dict(cfg)
+    cloned["selection"] = dict(cfg["selection"])
+    cloned["selection"]["score_weights"] = dict(score_weights)
+    return cloned
+
+
 def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestResult:
     bt_cfg = BacktestConfig(
         rebalance_frequency=str(cfg.get("backtest", {}).get("rebalance_frequency", "M")),
@@ -535,4 +554,23 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
     if not walkforward.empty:
         result.analytics["walkforward_avg_return"] = float(walkforward["total_return"].mean())
         result.analytics["walkforward_avg_sharpe"] = float(walkforward["sharpe"].mean())
+
+    legacy_cfg = _with_score_weights(cfg, _legacy_score_weights(cfg))
+    legacy_result = _run_single_backtest(legacy_cfg, bt_cfg, prices, prep_diagnostics, volume_data)
+    result.analytics["strategy_comparison"] = {
+        "enhanced_total_return": result.summary.get("total_return", 0.0),
+        "legacy_total_return": legacy_result.summary.get("total_return", 0.0),
+        "return_delta": result.summary.get("total_return", 0.0) - legacy_result.summary.get("total_return", 0.0),
+        "enhanced_max_drawdown": result.summary.get("max_drawdown", 0.0),
+        "legacy_max_drawdown": legacy_result.summary.get("max_drawdown", 0.0),
+        "drawdown_delta": result.summary.get("max_drawdown", 0.0) - legacy_result.summary.get("max_drawdown", 0.0),
+        "enhanced_active_return": result.summary.get("active_return", 0.0),
+        "legacy_active_return": legacy_result.summary.get("active_return", 0.0),
+        "active_return_delta": result.summary.get("active_return", 0.0) - legacy_result.summary.get("active_return", 0.0),
+        "enhanced_avg_turnover": result.summary.get("avg_turnover", 0.0),
+        "legacy_avg_turnover": legacy_result.summary.get("avg_turnover", 0.0),
+        "turnover_delta": result.summary.get("avg_turnover", 0.0) - legacy_result.summary.get("avg_turnover", 0.0),
+        "enhanced_halt_count": result.summary.get("halt_count", 0),
+        "legacy_halt_count": legacy_result.summary.get("halt_count", 0),
+    }
     return result

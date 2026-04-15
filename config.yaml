@@ -20,18 +20,38 @@ universe:
     tickers:
       - SPY
       - QQQ
-      - XLF
-      - XLK
-      - XBI
-      - SMH
-      - EEM
-      - EWZ
       - HYG
       - IEF
       - TLT
       - SHY
       - UUP
       - ^VIX
+    factor_tickers:
+      - MTUM
+      - QUAL
+      - USMV
+      - VLUE
+      - SIZE
+    sector_tickers:
+      - XLF
+      - XLK
+      - XLE
+      - XLV
+      - XLI
+      - XLP
+      - XLY
+      - XLU
+      - XLB
+      - XLRE
+      - XBI
+      - SMH
+    country_tickers:
+      - EEM
+      - EWZ
+      - EFA
+      - FXI
+      - EWJ
+      - INDA
 
 macro_filter:
   enabled: true
