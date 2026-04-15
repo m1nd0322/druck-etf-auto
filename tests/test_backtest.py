@@ -15,7 +15,7 @@ def _base_cfg():
             "top_n_risk_on": 2,
             "top_n_risk_off": 1,
             "max_weight": 1.0,
-            "score_weights": {"momentum": 0.55, "trend": 0.25, "vol_penalty": 0.10, "dd_penalty": 0.10},
+            "score_weights": {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "vol_penalty": 0.10, "dd_penalty": 0.10},
         },
         "macro_filter": {
             "thresholds": {"risk_on_score_min": 0.55, "risk_off_score_max": 0.45},
@@ -90,6 +90,7 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert "walkforward_windows" in result.analytics
     assert result.walkforward_summary is not None
     assert "factor_regime_attribution" in result.analytics
+    assert "selection_score_comparison" in result.analytics
     assert result.scenario_summary is not None
     assert not result.scenario_summary.empty
     assert set(["scenario", "severity", "tags", "operator_action", "review_required", "note_template", "scenario_total_return", "benchmark_relative_return"]).issubset(result.scenario_summary.columns)

@@ -376,6 +376,10 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
                 "capacity_estimate": capacity,
                 "selected_avg_momentum": float(selected["momentum"].mean()) if not selected.empty and "momentum" in selected.columns else 0.0,
                 "selected_avg_trend": float(selected["trend"].mean()) if not selected.empty and "trend" in selected.columns else 0.0,
+                "selected_avg_persistence": float(selected["persistence"].mean()) if not selected.empty and "persistence" in selected.columns else 0.0,
+                "selected_avg_recovery": float(selected["recovery"].mean()) if not selected.empty and "recovery" in selected.columns else 0.0,
+                "selected_avg_downside_efficiency": float(selected["downside_efficiency"].mean()) if not selected.empty and "downside_efficiency" in selected.columns else 0.0,
+                "selected_avg_score_uplift": float(selected["score_uplift"].mean()) if not selected.empty and "score_uplift" in selected.columns else 0.0,
                 "selected_avg_vol": float(selected["vol"].mean()) if not selected.empty and "vol" in selected.columns else 0.0,
                 "weights": current_weights.to_dict(),
                 "cuts": cuts.to_dict(orient="records") if hasattr(cuts, "to_dict") else [],
@@ -425,6 +429,12 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
         "win_rate": float((daily_returns_series > 0).mean()) if not daily_returns_series.empty else 0.0,
         "factor_regime_attribution": factor_regime,
         "capacity_warning": capacity_warning,
+        "selection_score_comparison": {
+            "avg_score_uplift": float(rebalance_log['selected_avg_score_uplift'].mean()) if not rebalance_log.empty and 'selected_avg_score_uplift' in rebalance_log.columns else 0.0,
+            "avg_persistence": float(rebalance_log['selected_avg_persistence'].mean()) if not rebalance_log.empty and 'selected_avg_persistence' in rebalance_log.columns else 0.0,
+            "avg_recovery": float(rebalance_log['selected_avg_recovery'].mean()) if not rebalance_log.empty and 'selected_avg_recovery' in rebalance_log.columns else 0.0,
+            "avg_downside_efficiency": float(rebalance_log['selected_avg_downside_efficiency'].mean()) if not rebalance_log.empty and 'selected_avg_downside_efficiency' in rebalance_log.columns else 0.0,
+        },
     }
 
     return BacktestResult(

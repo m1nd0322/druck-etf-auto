@@ -11,6 +11,16 @@ class SelectionResult:
     selected: pd.DataFrame
     weights: pd.Series
 
+
+def _legacy_score(df: pd.DataFrame, sw: dict) -> pd.Series:
+    return (
+        float(sw['momentum']) * df['mom_z']
+        + float(sw['trend']) * df['trend_z']
+        - float(sw['vol_penalty']) * df['vol_z']
+        - float(sw['dd_penalty']) * df['dd_z']
+    )
+
+
 def score_universe(prices: pd.DataFrame, sw: dict) -> pd.DataFrame:
     rows=[]
     for t in prices.columns:
@@ -37,6 +47,7 @@ def score_universe(prices: pd.DataFrame, sw: dict) -> pd.DataFrame:
     df['downside_z']=zscore(df['downside_efficiency'].fillna(0.0))
     df['vol_z']=zscore(df['vol'])
     df['dd_z']=zscore(df['mdd_1y'])
+    df['legacy_score'] = _legacy_score(df, sw)
     df['score']=(
         float(sw['momentum'])*df['mom_z']
         + float(sw['trend'])*df['trend_z']
@@ -46,6 +57,7 @@ def score_universe(prices: pd.DataFrame, sw: dict) -> pd.DataFrame:
         - float(sw['vol_penalty'])*df['vol_z']
         - float(sw['dd_penalty'])*df['dd_z']
     )
+    df['score_uplift'] = df['score'] - df['legacy_score']
     return df.sort_values('score', ascending=False)
 
 def allocate_weights(selected: pd.DataFrame, max_weight: float) -> pd.Series:

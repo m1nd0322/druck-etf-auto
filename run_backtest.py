@@ -30,6 +30,9 @@ if __name__ == "__main__":
     if runtime.ok:
         result = runtime.payload["backtest"]
         pprint(result.summary)
+        if result.analytics and result.analytics.get("selection_score_comparison"):
+            print("\n[Selection Score Comparison]")
+            pprint(result.analytics["selection_score_comparison"])
         _print_optional_report("Scenario Summary", result.scenario_summary)
         _print_optional_report("Walkforward Summary", result.walkforward_summary)
         print("\n[Rebalance Log]")
