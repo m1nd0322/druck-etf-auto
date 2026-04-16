@@ -12,4 +12,5 @@ jinja2
 tabulate
 pytest
 httpx
+pyarrow
 PyQt5; platform_system=="Windows"
