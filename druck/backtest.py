@@ -580,10 +580,20 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
     legacy_scenarios = legacy_result.scenario_summary.set_index("scenario") if legacy_result.scenario_summary is not None and not legacy_result.scenario_summary.empty else pd.DataFrame()
     shared_scenarios = sorted(set(enhanced_scenarios.index) & set(legacy_scenarios.index)) if not enhanced_scenarios.empty and not legacy_scenarios.empty else []
     scenario_deltas = {}
+    scenario_win_count = 0
+    scenario_loss_count = 0
     for scenario in shared_scenarios:
+        total_return_delta = float(enhanced_scenarios.loc[scenario, "scenario_total_return"] - legacy_scenarios.loc[scenario, "scenario_total_return"])
+        benchmark_relative_delta = float((enhanced_scenarios.loc[scenario, "benchmark_relative_return"] or 0.0) - (legacy_scenarios.loc[scenario, "benchmark_relative_return"] or 0.0))
+        verdict = "better" if total_return_delta > 0 else ("worse" if total_return_delta < 0 else "flat")
+        if total_return_delta > 0:
+            scenario_win_count += 1
+        elif total_return_delta < 0:
+            scenario_loss_count += 1
         scenario_deltas[scenario] = {
-            "scenario_total_return_delta": float(enhanced_scenarios.loc[scenario, "scenario_total_return"] - legacy_scenarios.loc[scenario, "scenario_total_return"]),
-            "benchmark_relative_return_delta": float((enhanced_scenarios.loc[scenario, "benchmark_relative_return"] or 0.0) - (legacy_scenarios.loc[scenario, "benchmark_relative_return"] or 0.0)),
+            "scenario_total_return_delta": total_return_delta,
+            "benchmark_relative_return_delta": benchmark_relative_delta,
+            "verdict": verdict,
         }
     worst_scenario = None
     worst_delta = 0.0
@@ -591,6 +601,10 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
         worst_scenario, worst_payload = min(scenario_deltas.items(), key=lambda item: item[1]["scenario_total_return_delta"])
         worst_delta = float(worst_payload["scenario_total_return_delta"])
 
+    robustness_summary = (
+        f"enhanced wins {scenario_win_count}, loses {scenario_loss_count} across shared scenarios"
+        + (f", worst case: {worst_scenario} ({worst_delta:.2%})" if worst_scenario is not None else "")
+    )
     result.analytics["strategy_comparison"] = {
         "enhanced_total_return": result.summary.get("total_return", 0.0),
         "legacy_total_return": legacy_result.summary.get("total_return", 0.0),
@@ -607,7 +621,11 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
         "enhanced_halt_count": result.summary.get("halt_count", 0),
         "legacy_halt_count": legacy_result.summary.get("halt_count", 0),
         "scenario_robustness_deltas": scenario_deltas,
+        "scenario_win_count": scenario_win_count,
+        "scenario_loss_count": scenario_loss_count,
+        "scenario_net_wins": scenario_win_count - scenario_loss_count,
         "worst_scenario_delta_name": worst_scenario,
         "worst_scenario_total_return_delta": worst_delta,
+        "robustness_summary": robustness_summary,
     }
     return result

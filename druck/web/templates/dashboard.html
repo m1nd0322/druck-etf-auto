@@ -58,6 +58,7 @@
 
     <div id="backtest-score-comparison" style="display:none">
       <h3>Selection Score Comparison</h3>
+      <div id="backtest-robustness-summary" class="alert alert-info" style="display:none"></div>
       <div class="table-wrap">
         <table>
           <tbody id="backtest-score-comparison-body"></tbody>
@@ -399,6 +400,7 @@ async function runBacktest() {
   const summaryBody = document.getElementById('backtest-summary-body');
   const scoreComparisonBox = document.getElementById('backtest-score-comparison');
   const scoreComparisonBody = document.getElementById('backtest-score-comparison-body');
+  const robustnessSummaryBox = document.getElementById('backtest-robustness-summary');
   const pickComparisonBox = document.getElementById('backtest-pick-comparison');
   const pickComparisonBody = document.getElementById('backtest-pick-comparison-body');
   const scenarioBox = document.getElementById('backtest-scenarios');
@@ -460,12 +462,20 @@ async function runBacktest() {
     summaryBox.style.display = Object.keys(summary).length ? 'block' : 'none';
 
     const scoreComparison = body.data.analytics && body.data.analytics.selection_score_comparison ? body.data.analytics.selection_score_comparison : {};
+    const strategyComparison = body.data.analytics && body.data.analytics.strategy_comparison ? body.data.analytics.strategy_comparison : {};
     const simpleScoreComparison = Object.fromEntries(Object.entries(scoreComparison).filter(([key]) => !['latest_legacy_top_picks', 'latest_alpha_top_picks'].includes(key)));
     scoreComparisonBody.innerHTML = Object.entries(simpleScoreComparison).map(([key, value]) => {
       const rendered = typeof value === 'number' ? formatBacktestNumber(value, 4) : value;
       return `<tr><th>${formatBacktestLabel(key)}</th><td>${rendered}</td></tr>`;
     }).join('');
     scoreComparisonBox.style.display = Object.keys(scoreComparison).length ? 'block' : 'none';
+    if (strategyComparison.robustness_summary) {
+      robustnessSummaryBox.style.display = 'block';
+      robustnessSummaryBox.textContent = strategyComparison.robustness_summary;
+    } else {
+      robustnessSummaryBox.style.display = 'none';
+      robustnessSummaryBox.textContent = '';
+    }
 
     const legacyPicks = Array.isArray(scoreComparison.latest_legacy_top_picks) ? scoreComparison.latest_legacy_top_picks : [];
     const alphaPicks = Array.isArray(scoreComparison.latest_alpha_top_picks) ? scoreComparison.latest_alpha_top_picks : [];
