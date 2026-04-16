@@ -176,11 +176,15 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     all_px = px_window.drop(columns=[c for c in ["^VIX"] if c in px_window.columns], errors="ignore")
     active_cols = [col for col in all_px.columns if pd.notna(all_px[col].iloc[-1])]
     all_px = all_px[active_cols]
-    scores = score_universe(all_px, cfg["selection"]["score_weights"])
+    state = regime.state
+    scores = score_universe(
+        all_px,
+        cfg["selection"]["score_weights"],
+        regime_state=state,
+        regime_factor_map=cfg.get("selection", {}).get("regime_factor_bias", {}),
+    )
     if scores.empty:
         raise RuntimeError("Not enough history to score universe")
-
-    state = regime.state
     top_on = int(cfg["selection"]["top_n_risk_on"])
     top_off = int(cfg["selection"]["top_n_risk_off"])
     if state == "RISK_ON":
@@ -192,8 +196,22 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     else:
         selected = scores.head(max(3, top_on // 2)).copy()
 
-    weights = allocate_weights(selected, float(cfg["selection"]["max_weight"]))
     cash = cfg["risk_cut"]["action"]["cash_us"]
+    sleeve_cfg = cfg.get("selection", {}).get("sleeve_budget", {})
+    sleeve_factor = set(cfg.get("universe", {}).get("us", {}).get("factor_tickers", []))
+    sleeve_sector = set(cfg.get("universe", {}).get("us", {}).get("sector_tickers", []))
+    sleeve_country = set(cfg.get("universe", {}).get("us", {}).get("country_tickers", []))
+    sleeve_map = {}
+    for ticker in selected.index:
+        if ticker in sleeve_factor:
+            sleeve_map[ticker] = "factor"
+        elif ticker in sleeve_sector:
+            sleeve_map[ticker] = "sector"
+        elif ticker in sleeve_country:
+            sleeve_map[ticker] = "country"
+        else:
+            sleeve_map[ticker] = "core"
+    weights = allocate_weights(selected, float(cfg["selection"]["max_weight"]), sleeve_map=sleeve_map, sleeve_budget=sleeve_cfg)
     final_w, cuts = apply_risk_cuts(all_px, weights, cfg["risk_cut"], cash_ticker=cash)
     strategy_halt, halt_reason, halt_detail = _detect_strategy_halt(cfg, regime, selected, final_w, cuts, scores)
     return state, float(regime.risk_score), final_w, selected, cuts, strategy_halt, halt_reason, halt_detail
@@ -557,6 +575,22 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
 
     legacy_cfg = _with_score_weights(cfg, _legacy_score_weights(cfg))
     legacy_result = _run_single_backtest(legacy_cfg, bt_cfg, prices, prep_diagnostics, volume_data)
+
+    enhanced_scenarios = result.scenario_summary.set_index("scenario") if result.scenario_summary is not None and not result.scenario_summary.empty else pd.DataFrame()
+    legacy_scenarios = legacy_result.scenario_summary.set_index("scenario") if legacy_result.scenario_summary is not None and not legacy_result.scenario_summary.empty else pd.DataFrame()
+    shared_scenarios = sorted(set(enhanced_scenarios.index) & set(legacy_scenarios.index)) if not enhanced_scenarios.empty and not legacy_scenarios.empty else []
+    scenario_deltas = {}
+    for scenario in shared_scenarios:
+        scenario_deltas[scenario] = {
+            "scenario_total_return_delta": float(enhanced_scenarios.loc[scenario, "scenario_total_return"] - legacy_scenarios.loc[scenario, "scenario_total_return"]),
+            "benchmark_relative_return_delta": float((enhanced_scenarios.loc[scenario, "benchmark_relative_return"] or 0.0) - (legacy_scenarios.loc[scenario, "benchmark_relative_return"] or 0.0)),
+        }
+    worst_scenario = None
+    worst_delta = 0.0
+    if scenario_deltas:
+        worst_scenario, worst_payload = min(scenario_deltas.items(), key=lambda item: item[1]["scenario_total_return_delta"])
+        worst_delta = float(worst_payload["scenario_total_return_delta"])
+
     result.analytics["strategy_comparison"] = {
         "enhanced_total_return": result.summary.get("total_return", 0.0),
         "legacy_total_return": legacy_result.summary.get("total_return", 0.0),
@@ -572,5 +606,8 @@ def run_backtest(cfg: dict, starting_capital: float | None = None) -> BacktestRe
         "turnover_delta": result.summary.get("avg_turnover", 0.0) - legacy_result.summary.get("avg_turnover", 0.0),
         "enhanced_halt_count": result.summary.get("halt_count", 0),
         "legacy_halt_count": legacy_result.summary.get("halt_count", 0),
+        "scenario_robustness_deltas": scenario_deltas,
+        "worst_scenario_delta_name": worst_scenario,
+        "worst_scenario_total_return_delta": worst_delta,
     }
     return result

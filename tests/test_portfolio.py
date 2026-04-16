@@ -2,7 +2,7 @@ import math
 
 import pandas as pd
 
-from druck.portfolio import allocate_weights, apply_risk_cuts, score_universe
+from druck.portfolio import allocate_weights, apply_risk_cuts, score_universe, apply_regime_factor_bias, apply_sleeve_budget
 
 
 def test_allocate_weights_normalizes_and_caps():
@@ -43,3 +43,21 @@ def test_score_universe_sorts_by_score_descending():
     scores = score_universe(prices, sw)
     assert list(scores.index) == list(scores.sort_values("score", ascending=False).index)
     assert {"persistence", "recovery", "downside_efficiency"}.issubset(scores.columns)
+
+
+def test_apply_regime_factor_bias_prefers_configured_factor_tickers():
+    scores = pd.DataFrame(
+        {
+            "score": [1.0, 0.9, 0.8],
+        },
+        index=["SPY", "MTUM", "USMV"],
+    )
+    biased = apply_regime_factor_bias(scores, "RISK_ON", {"RISK_ON": {"MTUM": 0.3}})
+    assert biased.index[0] == "MTUM"
+
+
+def test_apply_sleeve_budget_caps_sleeve_totals():
+    weights = pd.Series({"SPY": 0.30, "MTUM": 0.30, "QUAL": 0.20, "XLF": 0.20})
+    sleeve_map = {"SPY": "core", "MTUM": "factor", "QUAL": "factor", "XLF": "sector"}
+    budgeted = apply_sleeve_budget(weights, sleeve_map, {"factor": 0.25, "sector": 0.35, "core": 0.50})
+    assert budgeted[["MTUM", "QUAL"]].sum() <= 0.25 + 1e-9

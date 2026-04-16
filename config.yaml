@@ -68,6 +68,15 @@ macro_filter:
 selection:
   top_n_risk_on: 8
   top_n_risk_off: 4
+  regime_factor_bias:
+    RISK_ON:
+      "MTUM,QUAL": 0.20
+      "XLK,SMH,XLY": 0.10
+    NEUTRAL:
+      "QUAL,USMV": 0.10
+    RISK_OFF:
+      "USMV,QUAL": 0.20
+      "VLUE": 0.05
   score_weights:
     momentum: 0.35
     trend: 0.20
@@ -76,6 +85,11 @@ selection:
     downside_efficiency: 0.15
     vol_penalty: 0.10
     dd_penalty: 0.10
+  sleeve_budget:
+    core: 0.50
+    factor: 0.25
+    sector: 0.35
+    country: 0.25
   max_weight: 0.25
 
 risk_cut:

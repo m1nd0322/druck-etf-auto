@@ -21,7 +21,24 @@ def _legacy_score(df: pd.DataFrame, sw: dict) -> pd.Series:
     )
 
 
-def score_universe(prices: pd.DataFrame, sw: dict) -> pd.DataFrame:
+def apply_regime_factor_bias(scores: pd.DataFrame, regime_state: str, regime_factor_map: dict | None) -> pd.DataFrame:
+    if scores.empty or not regime_factor_map or 'ticker' in scores.columns:
+        pass
+    if scores.empty or not regime_factor_map:
+        return scores
+    mapping = regime_factor_map.get(regime_state, {}) or {}
+    bonuses = {}
+    for tickers_key, bonus in mapping.items():
+        if isinstance(tickers_key, str):
+            for ticker in [t.strip() for t in tickers_key.split(',') if t.strip()]:
+                bonuses[ticker] = float(bonus)
+    out = scores.copy()
+    out['regime_bonus'] = [bonuses.get(t, 0.0) for t in out.index]
+    out['score'] = out['score'] + out['regime_bonus']
+    return out.sort_values('score', ascending=False)
+
+
+def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = None, regime_factor_map: dict | None = None) -> pd.DataFrame:
     rows=[]
     for t in prices.columns:
         p=prices[t].dropna()
@@ -58,15 +75,46 @@ def score_universe(prices: pd.DataFrame, sw: dict) -> pd.DataFrame:
         - float(sw['dd_penalty'])*df['dd_z']
     )
     df['score_uplift'] = df['score'] - df['legacy_score']
-    return df.sort_values('score', ascending=False)
+    df = df.sort_values('score', ascending=False)
+    if regime_state is not None:
+        df = apply_regime_factor_bias(df, regime_state, regime_factor_map)
+    return df
 
-def allocate_weights(selected: pd.DataFrame, max_weight: float) -> pd.Series:
+def apply_sleeve_budget(weights: pd.Series, sleeve_map: dict[str, str] | None, sleeve_budget: dict[str, float] | None) -> pd.Series:
+    if weights.empty or not sleeve_map or not sleeve_budget:
+        return weights
+    adjusted = weights.copy()
+    result = adjusted.copy()
+
+    for sleeve in sorted({sleeve_map.get(t, 'other') for t in adjusted.index}):
+        members = [ticker for ticker in adjusted.index if sleeve_map.get(ticker, 'other') == sleeve]
+        if not members:
+            continue
+        sleeve_total = float(result.loc[members].sum())
+        budget = float(sleeve_budget.get(sleeve, sleeve_total))
+        if sleeve_total > budget > 0:
+            result.loc[members] = result.loc[members] * (budget / sleeve_total)
+
+    capped_sleeves = {sleeve for sleeve in sleeve_budget}
+    uncapped_members = [ticker for ticker in result.index if sleeve_map.get(ticker, 'other') not in capped_sleeves]
+    capped_total = float(result.drop(index=uncapped_members).sum()) if uncapped_members else float(result.sum())
+    residual = max(0.0, 1.0 - capped_total)
+    if uncapped_members and residual > 1e-12:
+        uncapped_total = float(result.loc[uncapped_members].sum())
+        if uncapped_total > 0:
+            result.loc[uncapped_members] = result.loc[uncapped_members] * (residual / uncapped_total)
+
+    return result
+
+
+def allocate_weights(selected: pd.DataFrame, max_weight: float, sleeve_map: dict[str, str] | None = None, sleeve_budget: dict[str, float] | None = None) -> pd.Series:
     vol = selected['vol'].replace(0, np.nan)
     inv = (1.0/vol).replace([np.inf,-np.inf], np.nan).dropna()
     w = inv/inv.sum()
     w = w.clip(upper=float(max_weight))
     if w.sum()>0:
         w=w/w.sum()
+    w = apply_sleeve_budget(w, sleeve_map, sleeve_budget)
     return w
 
 def apply_risk_cuts(prices: pd.DataFrame, target_weights: pd.Series, risk_cfg: dict, cash_ticker: str) -> Tuple[pd.Series, pd.DataFrame]:
