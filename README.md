@@ -310,6 +310,18 @@ The selection score is no longer just momentum plus trend. It now also includes:
 - `recovery` - how much an asset has recovered from prior drawdown
 - `downside_efficiency` - total return earned per unit of downside burden
 
+The US ETF universe is also structured in sleeves:
+- core tickers
+- factor ETFs
+- sector ETFs
+- country ETFs
+
+This widens the cross-sectional opportunity set instead of relying only on a small SPY/TLT-style universe.
+
+The backtest now includes two comparison layers:
+- `selection_score_comparison` - how the enhanced scoring changes picks versus the legacy score
+- `strategy_comparison` - how enhanced vs legacy strategy behavior differs on return, drawdown, active return, turnover, and halts
+
 ## 7. Moving toward live trading
 
 Live trading should be staged.
