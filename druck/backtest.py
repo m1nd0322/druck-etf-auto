@@ -9,7 +9,7 @@ import pandas as pd
 from .data import fetch_prices, get_date_range, make_universe
 from .engine import _detect_strategy_halt
 from .macro import compute_macro_regime, is_vix_spike
-from .portfolio import allocate_weights, apply_risk_cuts, score_universe
+from .portfolio import allocate_weights, apply_risk_cuts, score_universe, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation
 
 
 @dataclass
@@ -187,34 +187,27 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
         raise RuntimeError("Not enough history to score universe")
     top_on = int(cfg["selection"]["top_n_risk_on"])
     top_off = int(cfg["selection"]["top_n_risk_off"])
+    rotation = resolve_regime_rotation(cfg.get("selection", {}), state, top_on, top_off)
+    sleeve_map_all = build_sleeve_map(scores.index, cfg.get("universe", {}).get("us", {}))
+    rotated_scores = apply_sleeve_rotation(scores, sleeve_map_all, rotation)
     if state == "RISK_ON":
-        selected = scores.head(top_on).copy()
+        selected = rotated_scores.head(rotation["top_n"]).copy()
     elif state == "RISK_OFF":
-        tmp = scores.copy()
+        tmp = rotated_scores.copy()
         tmp["def_score"] = tmp["score"] - 0.3 * tmp["vol_z"]
-        selected = tmp.sort_values("def_score", ascending=False).head(top_off).copy()
+        selected = tmp.sort_values("def_score", ascending=False).head(rotation["top_n"]).copy()
     else:
-        selected = scores.head(max(3, top_on // 2)).copy()
+        selected = rotated_scores.head(rotation["top_n"]).copy()
 
     cash = cfg["risk_cut"]["action"]["cash_us"]
-    sleeve_cfg = cfg.get("selection", {}).get("sleeve_budget", {})
     sleeve_factor = set(cfg.get("universe", {}).get("us", {}).get("factor_tickers", []))
-    sleeve_sector = set(cfg.get("universe", {}).get("us", {}).get("sector_tickers", []))
-    sleeve_country = set(cfg.get("universe", {}).get("us", {}).get("country_tickers", []))
     factor_selected = [ticker for ticker in selected.index if ticker in sleeve_factor]
-    sleeve_map = {}
-    for ticker in selected.index:
-        if ticker in sleeve_factor:
-            sleeve_map[ticker] = "factor"
-        elif ticker in sleeve_sector:
-            sleeve_map[ticker] = "sector"
-        elif ticker in sleeve_country:
-            sleeve_map[ticker] = "country"
-        else:
-            sleeve_map[ticker] = "core"
-    weights = allocate_weights(selected, float(cfg["selection"]["max_weight"]), sleeve_map=sleeve_map, sleeve_budget=sleeve_cfg)
+    sleeve_map = build_sleeve_map(selected.index, cfg.get("universe", {}).get("us", {}))
+    weights = allocate_weights(selected, float(cfg["selection"]["max_weight"]), sleeve_map=sleeve_map, sleeve_budget=rotation.get("sleeve_budget"))
     final_w, cuts = apply_risk_cuts(all_px, weights, cfg["risk_cut"], cash_ticker=cash)
     strategy_halt, halt_reason, halt_detail = _detect_strategy_halt(cfg, regime, selected, final_w, cuts, scores)
+    selected.attrs["rotation_policy"] = rotation
+    selected.attrs["selected_sleeves"] = {ticker: sleeve_map.get(ticker, "core") for ticker in selected.index}
     return state, float(regime.risk_score), final_w, selected, cuts, strategy_halt, halt_reason, halt_detail
 
 
@@ -377,6 +370,8 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
 
         factor_universe = set(cfg.get("universe", {}).get("us", {}).get("factor_tickers", []))
         factor_selected = [ticker for ticker in selected.index if ticker in factor_universe]
+        rotation_policy = selected.attrs.get("rotation_policy", {}) if hasattr(selected, "attrs") else {}
+        selected_sleeves = selected.attrs.get("selected_sleeves", {}) if hasattr(selected, "attrs") else {}
         legacy_top = selected.sort_values('legacy_score', ascending=False).head(len(selected)).index.tolist() if not selected.empty and 'legacy_score' in selected.columns else []
         alpha_top = selected.sort_values('score', ascending=False).head(len(selected)).index.tolist() if not selected.empty else []
         overlap = len(set(legacy_top) & set(alpha_top))
@@ -408,6 +403,10 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
                 "factor_selected_count": len(factor_selected),
                 "factor_selected_ratio": float(len(factor_selected) / max(len(selected.index), 1)) if len(selected.index) > 0 else 0.0,
                 "factor_selected_tickers": factor_selected,
+                "rotation_top_n": int(rotation_policy.get("top_n", len(selected.index))) if rotation_policy else len(selected.index),
+                "rotation_preferred_sleeves": list(rotation_policy.get("preferred_sleeves", [])) if rotation_policy else [],
+                "rotation_sleeve_budget": dict(rotation_policy.get("sleeve_budget", {})) if rotation_policy else {},
+                "selected_sleeves": selected_sleeves,
                 "legacy_alpha_overlap": overlap,
                 "legacy_alpha_overlap_ratio": float(overlap / max(len(alpha_top), 1)) if alpha_top else 0.0,
                 "legacy_top_picks": legacy_top,
@@ -469,6 +468,10 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
             "avg_factor_selected_ratio": float(rebalance_log['factor_selected_ratio'].mean()) if not rebalance_log.empty and 'factor_selected_ratio' in rebalance_log.columns else 0.0,
             "latest_factor_selected_tickers": rebalance_log.iloc[-1]['factor_selected_tickers'] if not rebalance_log.empty and 'factor_selected_tickers' in rebalance_log.columns else [],
             "avg_overlap_ratio": float(rebalance_log['legacy_alpha_overlap_ratio'].mean()) if not rebalance_log.empty and 'legacy_alpha_overlap_ratio' in rebalance_log.columns else 0.0,
+            "avg_rotation_top_n": float(rebalance_log['rotation_top_n'].mean()) if not rebalance_log.empty and 'rotation_top_n' in rebalance_log.columns else 0.0,
+            "latest_rotation_preferred_sleeves": rebalance_log.iloc[-1]['rotation_preferred_sleeves'] if not rebalance_log.empty and 'rotation_preferred_sleeves' in rebalance_log.columns else [],
+            "latest_rotation_sleeve_budget": rebalance_log.iloc[-1]['rotation_sleeve_budget'] if not rebalance_log.empty and 'rotation_sleeve_budget' in rebalance_log.columns else {},
+            "latest_selected_sleeves": rebalance_log.iloc[-1]['selected_sleeves'] if not rebalance_log.empty and 'selected_sleeves' in rebalance_log.columns else {},
             "latest_legacy_top_picks": rebalance_log.iloc[-1]['legacy_top_picks'] if not rebalance_log.empty and 'legacy_top_picks' in rebalance_log.columns else [],
             "latest_alpha_top_picks": rebalance_log.iloc[-1]['alpha_top_picks'] if not rebalance_log.empty and 'alpha_top_picks' in rebalance_log.columns else [],
         },

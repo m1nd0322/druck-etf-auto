@@ -323,6 +323,12 @@ The backtest now includes two comparison layers:
 - `selection_score_comparison` - how the enhanced scoring changes picks versus the legacy score
 - `strategy_comparison` - how enhanced vs legacy strategy behavior differs on return, drawdown, active return, turnover, and halts
 
+The selection layer also supports regime-conditional sleeve rotation:
+- `selection.regime_sleeve_rotation` can change `top_n`, sleeve budgets, and sleeve score tilts by regime
+- `RISK_ON` can lean toward factor / sector sleeves
+- `RISK_OFF` can lean back toward core / defensive sleeves
+- backtest diagnostics now expose the latest applied sleeve policy and selected sleeve mix
+
 For storage-constrained environments, provider validation outputs are designed to be parquet-first rather than CSV-first.
 This keeps research artifacts compact and analytics-friendly on smaller SSDs.
 

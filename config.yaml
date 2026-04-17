@@ -90,6 +90,41 @@ selection:
     factor: 0.25
     sector: 0.35
     country: 0.25
+  regime_sleeve_rotation:
+    enabled: true
+    RISK_ON:
+      top_n: 8
+      preferred_sleeves: [factor, sector]
+      sleeve_budget:
+        core: 0.35
+        factor: 0.40
+        sector: 0.35
+        country: 0.20
+      score_tilt:
+        factor: 0.18
+        sector: 0.12
+    NEUTRAL:
+      top_n: 5
+      preferred_sleeves: [core, factor]
+      sleeve_budget:
+        core: 0.45
+        factor: 0.30
+        sector: 0.20
+        country: 0.15
+      score_tilt:
+        core: 0.05
+        factor: 0.08
+    RISK_OFF:
+      top_n: 4
+      preferred_sleeves: [core, country]
+      sleeve_budget:
+        core: 0.60
+        factor: 0.15
+        sector: 0.10
+        country: 0.25
+      score_tilt:
+        core: 0.10
+        country: 0.12
   max_weight: 0.25
 
 risk_cut:

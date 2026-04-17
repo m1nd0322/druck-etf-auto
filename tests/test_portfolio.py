@@ -2,7 +2,7 @@ import math
 
 import pandas as pd
 
-from druck.portfolio import allocate_weights, apply_risk_cuts, score_universe, apply_regime_factor_bias, apply_sleeve_budget
+from druck.portfolio import allocate_weights, apply_risk_cuts, score_universe, apply_regime_factor_bias, apply_sleeve_budget, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation
 
 
 def test_allocate_weights_normalizes_and_caps():
@@ -61,3 +61,37 @@ def test_apply_sleeve_budget_caps_sleeve_totals():
     sleeve_map = {"SPY": "core", "MTUM": "factor", "QUAL": "factor", "XLF": "sector"}
     budgeted = apply_sleeve_budget(weights, sleeve_map, {"factor": 0.25, "sector": 0.35, "core": 0.50})
     assert budgeted[["MTUM", "QUAL"]].sum() <= 0.25 + 1e-9
+
+
+def test_regime_rotation_prefers_configured_sleeves_and_top_n():
+    scores = pd.DataFrame(
+        {
+            "score": [1.0, 0.99, 0.98, 0.97],
+            "vol_z": [0.1, 0.1, 0.1, 0.1],
+        },
+        index=["SPY", "MTUM", "QUAL", "EWY"],
+    )
+    sleeve_map = build_sleeve_map(scores.index, {
+        "factor_tickers": ["MTUM", "QUAL"],
+        "sector_tickers": [],
+        "country_tickers": ["EWY"],
+    })
+    rotation = resolve_regime_rotation(
+        {
+            "regime_sleeve_rotation": {
+                "enabled": True,
+                "RISK_ON": {
+                    "top_n": 2,
+                    "preferred_sleeves": ["factor"],
+                    "score_tilt": {"factor": 0.2, "core": -0.1},
+                    "sleeve_budget": {"factor": 0.7, "core": 0.3},
+                }
+            }
+        },
+        "RISK_ON",
+        4,
+        2,
+    )
+    rotated = apply_sleeve_rotation(scores, sleeve_map, rotation)
+    assert rotated.index[:2].tolist() == ["MTUM", "QUAL"]
+    assert rotation["top_n"] == 2

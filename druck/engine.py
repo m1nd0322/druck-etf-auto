@@ -2,7 +2,7 @@ from __future__ import annotations
 import pandas as pd
 from .data import make_universe, fetch_prices, get_date_range
 from .macro import compute_macro_regime, is_vix_spike
-from .portfolio import score_universe, allocate_weights, apply_risk_cuts
+from .portfolio import score_universe, allocate_weights, apply_risk_cuts, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation
 from .report import save_report
 from .notifier import send_telegram
 from .runtime import StrategyHaltError
@@ -93,23 +93,33 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
 
     all_px = pd.concat([kr_px, us_px.drop(columns=[c for c in ['^VIX'] if c in us_px.columns], errors='ignore')], axis=1)
 
-    scores = score_universe(all_px, cfg['selection']['score_weights'])
+    state = regime.state
+    scores = score_universe(
+        all_px,
+        cfg['selection']['score_weights'],
+        regime_state=state,
+        regime_factor_map=cfg.get('selection', {}).get('regime_factor_bias', {}),
+    )
     if scores.empty:
         raise RuntimeError("Not enough history to score universe")
 
-    state = regime.state
     top_on = int(cfg['selection']['top_n_risk_on'])
     top_off = int(cfg['selection']['top_n_risk_off'])
-    if state == 'RISK_ON':
-        selected = scores.head(top_on).copy()
-    elif state == 'RISK_OFF':
-        tmp = scores.copy()
-        tmp['def_score'] = tmp['score'] - 0.3 * tmp['vol_z']
-        selected = tmp.sort_values('def_score', ascending=False).head(top_off).copy()
-    else:
-        selected = scores.head(max(3, top_on//2)).copy()
+    rotation = resolve_regime_rotation(cfg.get('selection', {}), state, top_on, top_off)
+    sleeve_map_all = build_sleeve_map(scores.index, cfg.get('universe', {}).get('us', {}))
+    rotated_scores = apply_sleeve_rotation(scores, sleeve_map_all, rotation)
 
-    w = allocate_weights(selected, float(cfg['selection']['max_weight']))
+    if state == 'RISK_ON':
+        selected = rotated_scores.head(rotation['top_n']).copy()
+    elif state == 'RISK_OFF':
+        tmp = rotated_scores.copy()
+        tmp['def_score'] = tmp['score'] - 0.3 * tmp['vol_z']
+        selected = tmp.sort_values('def_score', ascending=False).head(rotation['top_n']).copy()
+    else:
+        selected = rotated_scores.head(rotation['top_n']).copy()
+
+    selected_sleeve_map = build_sleeve_map(selected.index, cfg.get('universe', {}).get('us', {}))
+    w = allocate_weights(selected, float(cfg['selection']['max_weight']), sleeve_map=selected_sleeve_map, sleeve_budget=rotation.get('sleeve_budget'))
 
     cash = cfg['risk_cut']['action']['cash_us']
     final_w, cuts = apply_risk_cuts(all_px, w, cfg['risk_cut'], cash_ticker=cash)
@@ -159,4 +169,6 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         'strategy_halt': strategy_halt,
         'halt_reason': halt_reason,
         'halt_detail': halt_detail,
+        'rotation_policy': rotation,
+        'selected_sleeves': {ticker: selected_sleeve_map.get(ticker, 'core') for ticker in selected.index},
     }

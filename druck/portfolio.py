@@ -5,6 +5,53 @@ import numpy as np
 import pandas as pd
 from .features import momentum_score, trend_score, rolling_vol, max_drawdown, zscore, sma, trailing_drawdown, persistence_score, recovery_score, downside_efficiency
 
+
+def build_sleeve_map(tickers: list[str] | pd.Index, universe_cfg: dict | None) -> dict[str, str]:
+    universe_cfg = universe_cfg or {}
+    factor = set(universe_cfg.get("factor_tickers", []) or [])
+    sector = set(universe_cfg.get("sector_tickers", []) or [])
+    country = set(universe_cfg.get("country_tickers", []) or [])
+    sleeve_map: dict[str, str] = {}
+    for ticker in [str(t) for t in tickers]:
+        if ticker in factor:
+            sleeve_map[ticker] = "factor"
+        elif ticker in sector:
+            sleeve_map[ticker] = "sector"
+        elif ticker in country:
+            sleeve_map[ticker] = "country"
+        else:
+            sleeve_map[ticker] = "core"
+    return sleeve_map
+
+
+def resolve_regime_rotation(selection_cfg: dict | None, regime_state: str, default_top_on: int, default_top_off: int) -> dict:
+    selection_cfg = selection_cfg or {}
+    rotation_cfg = selection_cfg.get("regime_sleeve_rotation", {}) or {}
+    regime_cfg = rotation_cfg.get(regime_state, {}) or {}
+    top_n = regime_cfg.get("top_n")
+    if top_n is None:
+        top_n = default_top_off if regime_state == "RISK_OFF" else default_top_on if regime_state == "RISK_ON" else max(3, default_top_on // 2)
+    return {
+        "enabled": bool(rotation_cfg.get("enabled", False)),
+        "top_n": int(top_n),
+        "sleeve_budget": regime_cfg.get("sleeve_budget") or selection_cfg.get("sleeve_budget", {}) or {},
+        "score_tilt": regime_cfg.get("score_tilt") or {},
+        "preferred_sleeves": list(regime_cfg.get("preferred_sleeves", []) or []),
+    }
+
+
+def apply_sleeve_rotation(scores: pd.DataFrame, sleeve_map: dict[str, str] | None, rotation: dict | None) -> pd.DataFrame:
+    if scores.empty or not sleeve_map or not rotation or not rotation.get("enabled", False):
+        return scores
+    out = scores.copy()
+    score_tilt = rotation.get("score_tilt", {}) or {}
+    preferred_sleeves = set(rotation.get("preferred_sleeves", []) or [])
+    out["sleeve"] = [sleeve_map.get(t, "core") for t in out.index]
+    out["sleeve_rotation_bonus"] = [float(score_tilt.get(sleeve_map.get(t, "core"), 0.0)) for t in out.index]
+    out["rotation_preferred"] = [sleeve_map.get(t, "core") in preferred_sleeves for t in out.index]
+    out["score"] = out["score"] + out["sleeve_rotation_bonus"]
+    return out.sort_values(["score", "rotation_preferred"], ascending=[False, False])
+
 @dataclass
 class SelectionResult:
     scores: pd.DataFrame

@@ -31,6 +31,8 @@ def test_run_once_blocks_live_execution_when_review_fails(monkeypatch):
             "top_n_risk_off": 1,
             "max_weight": 1.0,
             "score_weights": {"momentum": 0.55, "trend": 0.25, "vol_penalty": 0.10, "dd_penalty": 0.10},
+            "regime_sleeve_rotation": {"enabled": True, "RISK_ON": {"top_n": 2, "preferred_sleeves": ["factor"], "sleeve_budget": {"factor": 0.7, "core": 0.3}, "score_tilt": {"factor": 0.2}}},
+            "regime_factor_bias": {"RISK_ON": {"HYG": 0.1}},
         },
         "macro_filter": {
             "thresholds": {"risk_on_score_min": 0.55, "risk_off_score_max": 0.45},
@@ -75,6 +77,7 @@ def test_run_once_halts_trading_when_strategy_signal_is_dangerous(monkeypatch):
             "top_n_risk_off": 1,
             "max_weight": 1.0,
             "score_weights": {"momentum": 0.55, "trend": 0.25, "vol_penalty": 0.10, "dd_penalty": 0.10},
+            "regime_sleeve_rotation": {"enabled": True, "RISK_OFF": {"top_n": 1, "preferred_sleeves": ["core"], "sleeve_budget": {"core": 0.8, "factor": 0.2}, "score_tilt": {"core": 0.1}}},
         },
         "macro_filter": {
             "thresholds": {"risk_on_score_min": 0.55, "risk_off_score_max": 0.45},
@@ -119,6 +122,7 @@ def test_run_once_halts_trading_on_performance_degradation(monkeypatch):
             "top_n_risk_off": 1,
             "max_weight": 1.0,
             "score_weights": {"momentum": 0.55, "trend": 0.25, "vol_penalty": 0.10, "dd_penalty": 0.10},
+            "regime_sleeve_rotation": {"enabled": True, "NEUTRAL": {"top_n": 2, "preferred_sleeves": ["core"], "sleeve_budget": {"core": 0.6, "factor": 0.2}, "score_tilt": {"core": 0.05}}},
         },
         "macro_filter": {
             "thresholds": {"risk_on_score_min": 0.55, "risk_off_score_max": 0.45},
@@ -176,6 +180,7 @@ def test_run_once_halts_on_benchmark_underperformance(monkeypatch):
             "top_n_risk_off": 1,
             "max_weight": 1.0,
             "score_weights": {"momentum": 0.55, "trend": 0.25, "vol_penalty": 0.10, "dd_penalty": 0.10},
+            "regime_sleeve_rotation": {"enabled": True, "RISK_ON": {"top_n": 2, "preferred_sleeves": ["factor"], "sleeve_budget": {"factor": 0.7, "core": 0.3}, "score_tilt": {"factor": 0.15}}},
         },
         "macro_filter": {
             "thresholds": {"risk_on_score_min": 0.55, "risk_off_score_max": 0.45},

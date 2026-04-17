@@ -128,6 +128,43 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
         _require_number(score_weights, key, "config.selection.score_weights")
     _validate_weights_sum(score_weights, "config.selection.score_weights")
 
+    regime_factor_bias = selection.get("regime_factor_bias", {})
+    if regime_factor_bias and not isinstance(regime_factor_bias, dict):
+        raise ConfigError("config.selection.regime_factor_bias must be a mapping")
+
+    sleeve_budget = selection.get("sleeve_budget", {})
+    if sleeve_budget and not isinstance(sleeve_budget, dict):
+        raise ConfigError("config.selection.sleeve_budget must be a mapping")
+
+    regime_rotation = selection.get("regime_sleeve_rotation", {})
+    if regime_rotation:
+        if not isinstance(regime_rotation, dict):
+            raise ConfigError("config.selection.regime_sleeve_rotation must be a mapping")
+        enabled = regime_rotation.get("enabled", False)
+        if not isinstance(enabled, bool):
+            raise ConfigError("config.selection.regime_sleeve_rotation.enabled must be boolean")
+        for regime_key in ["RISK_ON", "NEUTRAL", "RISK_OFF"]:
+            regime_cfg = regime_rotation.get(regime_key, {})
+            if regime_cfg and not isinstance(regime_cfg, dict):
+                raise ConfigError(f"config.selection.regime_sleeve_rotation.{regime_key} must be a mapping")
+            if not regime_cfg:
+                continue
+            if "top_n" in regime_cfg:
+                top_n = _require_number(regime_cfg, "top_n", f"config.selection.regime_sleeve_rotation.{regime_key}")
+                if top_n < 1:
+                    raise ConfigError(f"config.selection.regime_sleeve_rotation.{regime_key}.top_n must be >= 1")
+            if "preferred_sleeves" in regime_cfg:
+                pref = regime_cfg.get("preferred_sleeves")
+                if not isinstance(pref, list) or not all(isinstance(v, str) and v.strip() for v in pref):
+                    raise ConfigError(f"config.selection.regime_sleeve_rotation.{regime_key}.preferred_sleeves must be a string list")
+            for nested_key in ["sleeve_budget", "score_tilt"]:
+                nested = regime_cfg.get(nested_key, {})
+                if nested and not isinstance(nested, dict):
+                    raise ConfigError(f"config.selection.regime_sleeve_rotation.{regime_key}.{nested_key} must be a mapping")
+                for nk, nv in (nested or {}).items():
+                    if not isinstance(nv, (int, float)):
+                        raise ConfigError(f"config.selection.regime_sleeve_rotation.{regime_key}.{nested_key}.{nk} must be numeric")
+
     _require_bool(macro_filter, "enabled", "config.macro_filter")
     thresholds = _require_dict(macro_filter, "thresholds", "config.macro_filter")
     risk_on_score_min = _require_number(thresholds, "risk_on_score_min", "config.macro_filter.thresholds")
