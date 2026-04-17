@@ -7,6 +7,7 @@ from typing import Iterable
 import pandas as pd
 
 from .data import fetch_prices
+from .storage import ensure_storage_layout
 
 
 @dataclass
@@ -17,6 +18,7 @@ class ProviderValidationConfig:
     providers: list[str]
     cache_dir: str = ".cache"
     output_dir: str = "data/provider_validation"
+    storage_root: str = "."
 
 
 def _provider_frame(provider: str, tickers: Iterable[str], start: str, end: str, cache_dir: str) -> pd.DataFrame:
@@ -52,7 +54,8 @@ def _provider_frame(provider: str, tickers: Iterable[str], start: str, end: str,
 
 
 def run_provider_validation(cfg: ProviderValidationConfig) -> dict[str, Path]:
-    output_dir = Path(cfg.output_dir)
+    layout = ensure_storage_layout(cfg.storage_root)
+    output_dir = layout.provider_validation_root if cfg.output_dir == "data/provider_validation" else Path(cfg.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     frames = []

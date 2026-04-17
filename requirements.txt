@@ -13,4 +13,5 @@ tabulate
 pytest
 httpx
 pyarrow
+duckdb
 PyQt5; platform_system=="Windows"

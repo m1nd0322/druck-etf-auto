@@ -19,6 +19,7 @@ def test_run_provider_validation_writes_parquet_outputs(tmp_path, monkeypatch):
         end="2024-01-05",
         providers=["auto", "shared"],
         output_dir=str(tmp_path / "validation"),
+        storage_root=str(tmp_path),
     )
     out = run_provider_validation(cfg)
     assert Path(out["summary"]).exists()
