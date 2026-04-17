@@ -78,7 +78,12 @@ def test_backtest_api_returns_scenarios_and_analytics(tmp_path, monkeypatch):
         analytics = {
             "capacity_warning": {"status": "warning", "message": "too large"},
             "selection_score_comparison": {"avg_score_uplift": 0.12, "avg_persistence": 0.55},
-            "strategy_comparison": {"robustness_summary": "enhanced wins 2, loses 1 across shared scenarios"},
+            "strategy_comparison": {
+                "robustness_summary": "enhanced wins 2, loses 1 across shared scenarios",
+                "return_delta": 0.04,
+                "active_return_delta": 0.03,
+                "turnover_delta": 0.01,
+            },
         }
 
     monkeypatch.setattr("druck.web.app._load_cfg", lambda: {"backtest": {}})
@@ -139,7 +144,13 @@ def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):
             "capacity_warning": {
                 "status": "warning",
                 "message": "portfolio size exceeds estimated safe capacity",
-            }
+            },
+            "strategy_comparison": {
+                "robustness_summary": "enhanced wins 2, loses 1 across shared scenarios",
+                "return_delta": 0.04,
+                "active_return_delta": 0.03,
+                "turnover_delta": 0.01,
+            },
         },
     }
 
@@ -154,3 +165,4 @@ def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):
     assert body["warnings"]["backtest_scenario_warning"]["scenario"] == "benchmark_gap_down"
     assert body["warnings"]["backtest_scenario_warning"]["review_required"] is True
     assert body["warnings"]["backtest_scenario_warning"]["operator_action"] == "compare active risk versus benchmark and review hedge stance"
+    assert body["warnings"]["strategy_comparison_summary"]["priority"] == 3

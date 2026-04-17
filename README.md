@@ -288,7 +288,8 @@ The dashboard backtest view now also shows:
 The status API now surfaces top-level warnings via:
 - `/api/status -> warnings.backtest_capacity_warning`
 - `/api/status -> warnings.backtest_scenario_warning`
-- both warnings now use a consistent `message` + `priority` model for operator-facing consumption
+- `/api/status -> warnings.strategy_comparison_summary`
+- these warnings/summaries use a consistent `message` + `priority` model for operator-facing consumption
 
 The default scenario table includes preset rows such as:
 - return shock plus volatility expansion

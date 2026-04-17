@@ -187,6 +187,7 @@ _backtest_latest: dict | None = None
 def _status_warnings() -> dict[str, Any]:
     backtest_warning = None
     scenario_warning = None
+    strategy_summary = None
     if _backtest_latest is not None:
         analytics = _backtest_latest.get("analytics", {}) or {}
         raw_capacity_warning = analytics.get("capacity_warning")
@@ -212,9 +213,20 @@ def _status_warnings() -> dict[str, Any]:
                 "note_template": top.get("note_template"),
                 "benchmark_relative_return": top.get("benchmark_relative_return"),
             }
+        strategy_comp = analytics.get("strategy_comparison") or {}
+        if strategy_comp.get("robustness_summary"):
+            strategy_summary = {
+                "status": "info",
+                "priority": 3,
+                "message": strategy_comp.get("robustness_summary"),
+                "return_delta": strategy_comp.get("return_delta"),
+                "active_return_delta": strategy_comp.get("active_return_delta"),
+                "turnover_delta": strategy_comp.get("turnover_delta"),
+            }
     return {
         "backtest_capacity_warning": backtest_warning,
         "backtest_scenario_warning": scenario_warning,
+        "strategy_comparison_summary": strategy_summary,
     }
 
 
