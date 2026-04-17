@@ -325,6 +325,14 @@ The backtest now includes two comparison layers:
 For storage-constrained environments, provider validation outputs are designed to be parquet-first rather than CSV-first.
 This keeps research artifacts compact and analytics-friendly on smaller SSDs.
 
+Recommended storage model:
+- parquet for raw prices, provider validation outputs, and research artifacts
+- duckdb as an optional query layer on top of parquet, not as the primary raw storage layer
+
+In other words:
+- store first in parquet
+- analyze many parquet files together with duckdb when comparison/aggregation becomes complex
+
 ## 7. Moving toward live trading
 
 Live trading should be staged.
