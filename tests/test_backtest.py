@@ -92,6 +92,8 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert "factor_regime_attribution" in result.analytics
     assert "selection_score_comparison" in result.analytics
     assert "avg_overlap_ratio" in result.analytics["selection_score_comparison"]
+    assert "avg_factor_selected_ratio" in result.analytics["selection_score_comparison"]
+    assert "latest_factor_selected_tickers" in result.analytics["selection_score_comparison"]
     assert "latest_legacy_top_picks" in result.analytics["selection_score_comparison"]
     assert "latest_alpha_top_picks" in result.analytics["selection_score_comparison"]
     assert "strategy_comparison" in result.analytics
