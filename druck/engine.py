@@ -106,6 +106,7 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         benchmark_ticker=cfg.get('backtest', {}).get('benchmark_ticker', 'SPY'),
         relative_filter=cfg.get('selection', {}).get('benchmark_relative_filter', {}),
         factor_pref=factor_pref,
+        correlation_cfg=cfg.get('selection', {}).get('correlation_diversification', {}),
     )
     if scores.empty:
         raise RuntimeError("Not enough history to score universe")

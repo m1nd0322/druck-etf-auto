@@ -190,6 +190,16 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
     if sleeve_budget and not isinstance(sleeve_budget, dict):
         raise ConfigError("config.selection.sleeve_budget must be a mapping")
 
+    correlation_diversification = selection.get("correlation_diversification", {})
+    if correlation_diversification:
+        if not isinstance(correlation_diversification, dict):
+            raise ConfigError("config.selection.correlation_diversification must be a mapping")
+        if "enabled" in correlation_diversification and not isinstance(correlation_diversification.get("enabled"), bool):
+            raise ConfigError("config.selection.correlation_diversification.enabled must be boolean")
+        for key in ["lookback", "top_k", "penalty", "min_correlation"]:
+            if key in correlation_diversification:
+                _require_number(correlation_diversification, key, "config.selection.correlation_diversification")
+
     benchmark_relative_filter = selection.get("benchmark_relative_filter", {})
     if benchmark_relative_filter:
         if not isinstance(benchmark_relative_filter, dict):

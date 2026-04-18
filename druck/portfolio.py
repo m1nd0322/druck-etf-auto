@@ -6,6 +6,53 @@ import pandas as pd
 from .features import momentum_score, trend_score, rolling_vol, max_drawdown, zscore, sma, trailing_drawdown, persistence_score, recovery_score, downside_efficiency, relative_strength_vs_benchmark, capacity_penalty_score
 
 
+def compute_diversification_adjustment(scores: pd.DataFrame, correlation_cfg: dict | None = None) -> pd.DataFrame:
+    if scores.empty:
+        return scores
+    correlation_cfg = correlation_cfg or {}
+    if not bool(correlation_cfg.get("enabled", False)):
+        out = scores.copy()
+        out["diversification_penalty"] = 0.0
+        out["diversification_score"] = 0.0
+        return out
+
+    lookback = int(correlation_cfg.get("lookback", 63) or 63)
+    top_k = int(correlation_cfg.get("top_k", 3) or 3)
+    penalty_scale = float(correlation_cfg.get("penalty", 0.0) or 0.0)
+    threshold = float(correlation_cfg.get("min_correlation", 0.0) or 0.0)
+
+    out = scores.copy()
+    corr = out.attrs.get("return_correlation")
+    if corr is None or getattr(corr, "empty", True):
+        out["diversification_penalty"] = 0.0
+        out["diversification_score"] = 0.0
+        return out
+
+    corr = corr.reindex(index=out.index, columns=out.index)
+    penalties: dict[str, float] = {}
+    contributions: dict[str, float] = {}
+    rank_order = out.sort_values("score", ascending=False).index.tolist()
+
+    for ticker in out.index:
+        peers = [peer for peer in rank_order if peer != ticker][:top_k]
+        if not peers:
+            penalties[ticker] = 0.0
+            contributions[ticker] = 0.0
+            continue
+        values = corr.loc[ticker, peers].fillna(0.0).astype(float)
+        positive_values = values[values > threshold]
+        avg_corr = float(positive_values.mean()) if not positive_values.empty else 0.0
+        penalty = max(0.0, avg_corr - threshold) * penalty_scale
+        penalties[ticker] = penalty
+        contributions[ticker] = max(0.0, 1.0 - avg_corr)
+
+    out["diversification_penalty"] = pd.Series(penalties).reindex(out.index).fillna(0.0)
+    out["diversification_score"] = pd.Series(contributions).reindex(out.index).fillna(0.0)
+    out["score"] = out["score"] - out["diversification_penalty"]
+    out.attrs["diversification_cfg"] = {"lookback": lookback, "top_k": top_k, "penalty": penalty_scale, "min_correlation": threshold}
+    return out.sort_values("score", ascending=False)
+
+
 def build_sleeve_map(tickers: list[str] | pd.Index, universe_cfg: dict | None) -> dict[str, str]:
     universe_cfg = universe_cfg or {}
     factor = set(universe_cfg.get("factor_tickers", []) or [])
@@ -143,7 +190,7 @@ def apply_regime_factor_bias(scores: pd.DataFrame, regime_state: str, regime_fac
     return out.sort_values('score', ascending=False)
 
 
-def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = None, regime_factor_map: dict | None = None, sleeve_map: dict[str, str] | None = None, benchmark_ticker: str | None = "SPY", relative_filter: dict | None = None, factor_pref: dict | None = None) -> pd.DataFrame:
+def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = None, regime_factor_map: dict | None = None, sleeve_map: dict[str, str] | None = None, benchmark_ticker: str | None = "SPY", relative_filter: dict | None = None, factor_pref: dict | None = None, correlation_cfg: dict | None = None) -> pd.DataFrame:
     rows=[]
     benchmark = prices[benchmark_ticker].dropna() if benchmark_ticker and benchmark_ticker in prices.columns else None
     relative_filter = relative_filter or {}
@@ -178,6 +225,8 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
     df['dd_z']=zscore(df['mdd_1y'])
     df['rel_strength_z']=zscore(df['relative_strength_6m'].fillna(0.0))
     df['capacity_z']=zscore(df['capacity_score'].fillna(0.0))
+    returns_corr = prices.pct_change(fill_method=None).tail(int((correlation_cfg or {}).get('lookback', 63) or 63)).corr() if len(prices.index) > 1 else pd.DataFrame()
+    df.attrs['return_correlation'] = returns_corr
     df['legacy_score'] = _legacy_score(df, sw)
     df['score']=(
         float(sw['momentum'])*df['mom_z']
@@ -213,6 +262,7 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
     if regime_state is not None:
         df = apply_regime_factor_bias(df, regime_state, regime_factor_map)
     df = apply_regime_factor_map(df, factor_pref)
+    df = compute_diversification_adjustment(df, correlation_cfg)
     return df
 
 def apply_sleeve_budget(weights: pd.Series, sleeve_map: dict[str, str] | None, sleeve_budget: dict[str, float] | None) -> pd.Series:

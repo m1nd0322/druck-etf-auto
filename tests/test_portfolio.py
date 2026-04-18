@@ -3,7 +3,7 @@ import math
 import pytest
 import pandas as pd
 
-from druck.portfolio import allocate_weights, apply_risk_cuts, score_universe, apply_regime_factor_bias, apply_sleeve_budget, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation, resolve_factor_preference, apply_regime_factor_map
+from druck.portfolio import allocate_weights, apply_risk_cuts, score_universe, apply_regime_factor_bias, apply_sleeve_budget, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation, resolve_factor_preference, apply_regime_factor_map, compute_diversification_adjustment
 
 
 def test_allocate_weights_normalizes_and_caps():
@@ -257,3 +257,44 @@ def test_score_universe_can_hard_exclude_benchmark_relative_failures():
     )
     assert "MTUM" not in scored.index
     assert "QUAL" in scored.index
+
+
+def test_compute_diversification_adjustment_penalizes_highly_correlated_candidates():
+    scores = pd.DataFrame(
+        {
+            "score": [1.00, 0.99, 0.80],
+        },
+        index=["SPY", "QQQ", "TLT"],
+    )
+    corr = pd.DataFrame(
+        {
+            "SPY": [1.0, 0.92, 0.10],
+            "QQQ": [0.92, 1.0, 0.12],
+            "TLT": [0.10, 0.12, 1.0],
+        },
+        index=["SPY", "QQQ", "TLT"],
+    )
+    scores.attrs["return_correlation"] = corr
+    adjusted = compute_diversification_adjustment(
+        scores,
+        {"enabled": True, "top_k": 2, "penalty": 0.5, "min_correlation": 0.6},
+    )
+    assert adjusted.loc["QQQ", "diversification_penalty"] > adjusted.loc["TLT", "diversification_penalty"]
+    assert adjusted.loc["TLT", "diversification_score"] > adjusted.loc["QQQ", "diversification_score"]
+
+
+def test_score_universe_adds_diversification_columns_when_enabled():
+    idx = pd.date_range("2024-01-01", periods=300, freq="D")
+    prices = pd.DataFrame({
+        "SPY": pd.Series([100 + i * 0.25 for i in range(300)], index=idx),
+        "QQQ": pd.Series([100 + i * 0.24 + (i % 5) * 0.02 for i in range(300)], index=idx),
+        "TLT": pd.Series([100 + i * 0.05 + ((-1) ** i) * 0.2 for i in range(300)], index=idx),
+    })
+    sw = {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "relative_strength": 0.10, "vol_penalty": 0.10, "dd_penalty": 0.10}
+    scored = score_universe(
+        prices,
+        sw,
+        correlation_cfg={"enabled": True, "lookback": 63, "top_k": 2, "penalty": 0.4, "min_correlation": 0.5},
+    )
+    assert "diversification_penalty" in scored.columns
+    assert "diversification_score" in scored.columns

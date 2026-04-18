@@ -90,6 +90,12 @@ selection:
     capacity_awareness: 0.08
     vol_penalty: 0.10
     dd_penalty: 0.10
+  correlation_diversification:
+    enabled: true
+    lookback: 63
+    top_k: 3
+    penalty: 0.12
+    min_correlation: 0.60
   benchmark_relative_filter:
     enabled: true
     mode: penalty
