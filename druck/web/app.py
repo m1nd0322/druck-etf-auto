@@ -113,12 +113,15 @@ def _format_regime_result(result: dict) -> dict:
     trade_review = result.get("trade_review")
     rebalance_result = result.get("rebalance_result")
 
+    rotation_policy = result.get("rotation_policy") or {}
+    selected_sleeves = result.get("selected_sleeves") or {}
+
     etfs = []
     for ticker in weights.index:
         w = float(weights.get(ticker, 0))
         if w <= 0:
             continue
-        row: Dict[str, Any] = {"ticker": ticker, "weight": round(w * 100, 2)}
+        row: Dict[str, Any] = {"ticker": ticker, "weight": round(w * 100, 2), "sleeve": selected_sleeves.get(ticker, "core")}
         if ticker in scores.index:
             s = scores.loc[ticker]
             row["score"] = round(float(s.get("score", 0)), 4)
@@ -165,6 +168,15 @@ def _format_regime_result(result: dict) -> dict:
             "executions": rebalance_result.executions,
         }
 
+    sleeve_mix: dict[str, float] = {}
+    for ticker in weights.index:
+        w = float(weights.get(ticker, 0.0))
+        if w <= 0:
+            continue
+        sleeve = selected_sleeves.get(ticker, "core")
+        sleeve_mix[sleeve] = sleeve_mix.get(sleeve, 0.0) + w
+    sleeve_mix = {k: round(v * 100, 2) for k, v in sorted(sleeve_mix.items(), key=lambda item: item[1], reverse=True)}
+
     return {
         "state": regime.state,
         "risk_score": round(regime.risk_score, 4),
@@ -177,6 +189,15 @@ def _format_regime_result(result: dict) -> dict:
         "strategy_halt": bool(result.get("strategy_halt", False)),
         "halt_reason": result.get("halt_reason", ""),
         "halt_detail": result.get("halt_detail", ""),
+        "rotation_policy": {
+            "enabled": bool(rotation_policy.get("enabled", False)),
+            "top_n": rotation_policy.get("top_n"),
+            "preferred_sleeves": list(rotation_policy.get("preferred_sleeves", []) or []),
+            "sleeve_budget": rotation_policy.get("sleeve_budget", {}) or {},
+            "score_tilt": rotation_policy.get("score_tilt", {}) or {},
+        },
+        "selected_sleeves": selected_sleeves,
+        "selected_sleeve_mix": sleeve_mix,
     }
 
 

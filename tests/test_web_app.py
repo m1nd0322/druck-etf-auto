@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from druck.web.app import app
+from druck.web.app import app, _format_regime_result
 
 
 def test_audit_api_returns_rows(tmp_path, monkeypatch):
@@ -99,6 +99,44 @@ def test_backtest_api_returns_scenarios_and_analytics(tmp_path, monkeypatch):
     assert body["data"]["analytics"]["strategy_comparison"]["robustness_summary"].startswith("enhanced wins")
 
 
+def test_format_regime_result_includes_rotation_policy_and_sleeve_mix():
+    import types
+    import pandas as pd
+
+    result = {
+        "regime": types.SimpleNamespace(state="RISK_ON", risk_score=0.71, details={"spy_trend": 0.8}),
+        "scores": pd.DataFrame(
+            {
+                "score": [1.2, 1.1],
+                "momentum": [0.2, 0.1],
+                "trend": [1.0, 0.8],
+                "vol": [0.1, 0.2],
+                "mdd_1y": [-0.05, -0.08],
+            },
+            index=["MTUM", "SPY"],
+        ),
+        "target_weights": pd.Series({"MTUM": 0.6, "SPY": 0.4}),
+        "report_path": "output/report_test.md",
+        "strategy_halt": False,
+        "halt_reason": "",
+        "halt_detail": "",
+        "rotation_policy": {
+            "enabled": True,
+            "top_n": 2,
+            "preferred_sleeves": ["factor"],
+            "sleeve_budget": {"factor": 0.7, "core": 0.3},
+            "score_tilt": {"factor": 0.2},
+        },
+        "selected_sleeves": {"MTUM": "factor", "SPY": "core"},
+    }
+    body = _format_regime_result(result)
+    assert body["rotation_policy"]["enabled"] is True
+    assert body["rotation_policy"]["top_n"] == 2
+    assert body["selected_sleeves"]["MTUM"] == "factor"
+    assert body["selected_sleeve_mix"]["factor"] == 60.0
+    assert body["etfs"][0]["sleeve"] in {"factor", "core"}
+
+
 def test_dashboard_template_contains_backtest_sections():
     from pathlib import Path
 
@@ -118,6 +156,12 @@ def test_dashboard_template_contains_backtest_sections():
     assert "tag-count" in text
     assert "note template" in text
     assert "review required" in text or "operator_action" in text
+
+    result_partial = (dashboard_path.parent / "_result.html").read_text(encoding="utf-8")
+    assert "Regime Sleeve Rotation" in result_partial
+    assert "Selected Mix %" in result_partial
+    assert "Preferred sleeves" in result_partial
+    assert "Sleeve" in result_partial
 
 
 def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):

@@ -97,6 +97,45 @@
 </section>
 {% endif %}
 
+{% if latest.rotation_policy and latest.rotation_policy.enabled %}
+<section class="section">
+  <h2>Regime Sleeve Rotation</h2>
+  <ul>
+    <li><strong>Top N:</strong> {{ latest.rotation_policy.top_n }}</li>
+    <li><strong>Preferred sleeves:</strong> {{ latest.rotation_policy.preferred_sleeves|join(', ') if latest.rotation_policy.preferred_sleeves else 'none' }}</li>
+  </ul>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Sleeve</th>
+          <th>Selected Mix %</th>
+          <th>Budget %</th>
+          <th>Score Tilt</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sleeve, mix in latest.selected_sleeve_mix.items() %}
+        <tr>
+          <td>{{ sleeve }}</td>
+          <td>{{ "%.2f"|format(mix) }}%</td>
+          <td>
+            {% if latest.rotation_policy.sleeve_budget.get(sleeve) is not none %}
+              {{ "%.2f"|format(latest.rotation_policy.sleeve_budget.get(sleeve, 0) * 100) }}%
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>{{ "%.2f"|format(latest.rotation_policy.score_tilt.get(sleeve, 0)) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 {% if latest.rebalance %}
 <section class="section">
   <h2>Rebalance Status</h2>
@@ -141,6 +180,7 @@
       <thead>
         <tr>
           <th>Ticker</th>
+          <th>Sleeve</th>
           <th>Weight %</th>
           <th>Score</th>
           <th>Momentum</th>
@@ -153,6 +193,7 @@
         {% for etf in latest.etfs %}
         <tr>
           <td class="ticker">{{ etf.ticker }}</td>
+          <td>{{ etf.get('sleeve', 'core') }}</td>
           <td>
             <div class="weight-bar" style="--w:{{ etf.weight }}%">{{ "%.1f"|format(etf.weight) }}%</div>
           </td>
