@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Tuple
 import numpy as np
 import pandas as pd
-from .features import momentum_score, trend_score, rolling_vol, max_drawdown, zscore, sma, trailing_drawdown, persistence_score, recovery_score, downside_efficiency
+from .features import momentum_score, trend_score, rolling_vol, max_drawdown, zscore, sma, trailing_drawdown, persistence_score, recovery_score, downside_efficiency, relative_strength_vs_benchmark
 
 
 def build_sleeve_map(tickers: list[str] | pd.Index, universe_cfg: dict | None) -> dict[str, str]:
@@ -85,19 +85,25 @@ def apply_regime_factor_bias(scores: pd.DataFrame, regime_state: str, regime_fac
     return out.sort_values('score', ascending=False)
 
 
-def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = None, regime_factor_map: dict | None = None) -> pd.DataFrame:
+def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = None, regime_factor_map: dict | None = None, sleeve_map: dict[str, str] | None = None, benchmark_ticker: str | None = "SPY", relative_filter: dict | None = None) -> pd.DataFrame:
     rows=[]
+    benchmark = prices[benchmark_ticker].dropna() if benchmark_ticker and benchmark_ticker in prices.columns else None
+    relative_filter = relative_filter or {}
     for t in prices.columns:
         p=prices[t].dropna()
         if len(p)<260:
             continue
+        sleeve = sleeve_map.get(t, 'core') if sleeve_map else 'core'
+        rs_126 = relative_strength_vs_benchmark(p, benchmark, 126) if benchmark is not None and t != benchmark_ticker else 0.0
         rows.append({
             'ticker':t,
+            'sleeve': sleeve,
             'momentum':momentum_score(p),
             'trend':trend_score(p),
             'persistence': persistence_score(p, 126),
             'recovery': recovery_score(p, 126),
             'downside_efficiency': downside_efficiency(p, 126),
+            'relative_strength_6m': rs_126,
             'vol':rolling_vol(p,63),
             'mdd_1y':max_drawdown(p,252),
         })
@@ -111,6 +117,7 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
     df['downside_z']=zscore(df['downside_efficiency'].fillna(0.0))
     df['vol_z']=zscore(df['vol'])
     df['dd_z']=zscore(df['mdd_1y'])
+    df['rel_strength_z']=zscore(df['relative_strength_6m'].fillna(0.0))
     df['legacy_score'] = _legacy_score(df, sw)
     df['score']=(
         float(sw['momentum'])*df['mom_z']
@@ -118,10 +125,23 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
         + float(sw.get('persistence', 0.20))*df['persist_z']
         + float(sw.get('recovery', 0.15))*df['recovery_z']
         + float(sw.get('downside_efficiency', 0.15))*df['downside_z']
+        + float(sw.get('relative_strength', 0.10))*df['rel_strength_z']
         - float(sw['vol_penalty'])*df['vol_z']
         - float(sw['dd_penalty'])*df['dd_z']
     )
     df['score_uplift'] = df['score'] - df['legacy_score']
+
+    threshold = relative_filter.get('min_relative_strength_6m') if relative_filter else None
+    if threshold is not None:
+        penalty = float(relative_filter.get('penalty', 0.0))
+        enabled_sleeves = set(relative_filter.get('apply_to_sleeves', ['factor', 'sector', 'country']))
+        mask = df['sleeve'].isin(enabled_sleeves) & (df['relative_strength_6m'].fillna(-999.0) < float(threshold))
+        df['benchmark_relative_fail'] = mask
+        if penalty > 0:
+            df.loc[mask, 'score'] = df.loc[mask, 'score'] - penalty
+    else:
+        df['benchmark_relative_fail'] = False
+
     df = df.sort_values('score', ascending=False)
     if regime_state is not None:
         df = apply_regime_factor_bias(df, regime_state, regime_factor_map)

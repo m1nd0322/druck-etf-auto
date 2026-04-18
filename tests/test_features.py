@@ -2,7 +2,7 @@ import math
 
 import pandas as pd
 
-from druck.features import pct_change_n, rolling_vol, sma, trailing_drawdown, momentum_score, persistence_score, recovery_score, downside_efficiency
+from druck.features import pct_change_n, rolling_vol, sma, trailing_drawdown, momentum_score, persistence_score, recovery_score, downside_efficiency, relative_strength_vs_benchmark
 
 
 def test_sma_returns_last_window_average():
@@ -46,3 +46,9 @@ def test_downside_efficiency_prefers_better_return_per_downside_vol():
     smooth = pd.Series([100 + i * 0.5 for i in range(200)])
     noisy = pd.Series([100 + i * 0.5 + ((-1) ** i) * 2 for i in range(200)])
     assert downside_efficiency(smooth, 126) > downside_efficiency(noisy, 126)
+
+
+def test_relative_strength_vs_benchmark_positive_when_asset_outperforms():
+    asset = pd.Series([100 + i * 1.0 for i in range(200)])
+    benchmark = pd.Series([100 + i * 0.5 for i in range(200)])
+    assert relative_strength_vs_benchmark(asset, benchmark, 126) > 0

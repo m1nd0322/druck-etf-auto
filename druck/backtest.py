@@ -177,11 +177,15 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     active_cols = [col for col in all_px.columns if pd.notna(all_px[col].iloc[-1])]
     all_px = all_px[active_cols]
     state = regime.state
+    sleeve_map_all = build_sleeve_map(all_px.columns, cfg.get("universe", {}).get("us", {}))
     scores = score_universe(
         all_px,
         cfg["selection"]["score_weights"],
         regime_state=state,
         regime_factor_map=cfg.get("selection", {}).get("regime_factor_bias", {}),
+        sleeve_map=sleeve_map_all,
+        benchmark_ticker=cfg.get("backtest", {}).get("benchmark_ticker", "SPY"),
+        relative_filter=cfg.get("selection", {}).get("benchmark_relative_filter", {}),
     )
     if scores.empty:
         raise RuntimeError("Not enough history to score universe")
@@ -400,6 +404,8 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
                 "selected_avg_recovery": float(selected["recovery"].mean()) if not selected.empty and "recovery" in selected.columns else 0.0,
                 "selected_avg_downside_efficiency": float(selected["downside_efficiency"].mean()) if not selected.empty and "downside_efficiency" in selected.columns else 0.0,
                 "selected_avg_score_uplift": float(selected["score_uplift"].mean()) if not selected.empty and "score_uplift" in selected.columns else 0.0,
+                "selected_avg_relative_strength": float(selected["relative_strength_6m"].mean()) if not selected.empty and "relative_strength_6m" in selected.columns else 0.0,
+                "benchmark_relative_fail_count": int(selected["benchmark_relative_fail"].sum()) if not selected.empty and "benchmark_relative_fail" in selected.columns else 0,
                 "factor_selected_count": len(factor_selected),
                 "factor_selected_ratio": float(len(factor_selected) / max(len(selected.index), 1)) if len(selected.index) > 0 else 0.0,
                 "factor_selected_tickers": factor_selected,
@@ -465,6 +471,8 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
             "avg_persistence": float(rebalance_log['selected_avg_persistence'].mean()) if not rebalance_log.empty and 'selected_avg_persistence' in rebalance_log.columns else 0.0,
             "avg_recovery": float(rebalance_log['selected_avg_recovery'].mean()) if not rebalance_log.empty and 'selected_avg_recovery' in rebalance_log.columns else 0.0,
             "avg_downside_efficiency": float(rebalance_log['selected_avg_downside_efficiency'].mean()) if not rebalance_log.empty and 'selected_avg_downside_efficiency' in rebalance_log.columns else 0.0,
+            "avg_relative_strength": float(rebalance_log['selected_avg_relative_strength'].mean()) if not rebalance_log.empty and 'selected_avg_relative_strength' in rebalance_log.columns else 0.0,
+            "avg_benchmark_relative_fail_count": float(rebalance_log['benchmark_relative_fail_count'].mean()) if not rebalance_log.empty and 'benchmark_relative_fail_count' in rebalance_log.columns else 0.0,
             "avg_factor_selected_ratio": float(rebalance_log['factor_selected_ratio'].mean()) if not rebalance_log.empty and 'factor_selected_ratio' in rebalance_log.columns else 0.0,
             "latest_factor_selected_tickers": rebalance_log.iloc[-1]['factor_selected_tickers'] if not rebalance_log.empty and 'factor_selected_tickers' in rebalance_log.columns else [],
             "avg_overlap_ratio": float(rebalance_log['legacy_alpha_overlap_ratio'].mean()) if not rebalance_log.empty and 'legacy_alpha_overlap_ratio' in rebalance_log.columns else 0.0,

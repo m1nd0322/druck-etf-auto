@@ -90,5 +90,18 @@ def downside_efficiency(prices: pd.Series, lookback: int = 126) -> float:
     return float(total_return / penalty)
 
 
+def relative_strength_vs_benchmark(prices: pd.Series, benchmark: pd.Series, lookback: int = 126) -> float:
+    if len(prices) < lookback + 1 or len(benchmark) < lookback + 1:
+        return float("nan")
+    p = prices.iloc[-(lookback + 1):]
+    b = benchmark.iloc[-(lookback + 1):]
+    aligned = pd.concat([p.rename("asset"), b.rename("benchmark")], axis=1).dropna()
+    if len(aligned) < lookback + 1:
+        return float("nan")
+    asset_ret = float(aligned["asset"].iloc[-1] / aligned["asset"].iloc[0] - 1.0)
+    bench_ret = float(aligned["benchmark"].iloc[-1] / aligned["benchmark"].iloc[0] - 1.0)
+    return float(asset_ret - bench_ret)
+
+
 def zscore(s: pd.Series) -> pd.Series:
     return (s - s.mean()) / (s.std(ddof=0) + 1e-12)

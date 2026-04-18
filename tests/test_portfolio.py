@@ -95,3 +95,25 @@ def test_regime_rotation_prefers_configured_sleeves_and_top_n():
     rotated = apply_sleeve_rotation(scores, sleeve_map, rotation)
     assert rotated.index[:2].tolist() == ["MTUM", "QUAL"]
     assert rotation["top_n"] == 2
+
+
+def test_score_universe_applies_benchmark_relative_penalty_to_target_sleeves():
+    idx = pd.date_range("2024-01-01", periods=300, freq="D")
+    prices = pd.DataFrame({
+        "SPY": pd.Series([100 + i * 0.3 for i in range(300)], index=idx),
+        "MTUM": pd.Series([100 + i * 0.1 for i in range(300)], index=idx),
+        "QUAL": pd.Series([100 + i * 0.35 for i in range(300)], index=idx),
+    })
+    sleeve_map = {"SPY": "core", "MTUM": "factor", "QUAL": "factor"}
+    sw = {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "relative_strength": 0.10, "vol_penalty": 0.10, "dd_penalty": 0.10}
+    scored = score_universe(
+        prices,
+        sw,
+        sleeve_map=sleeve_map,
+        benchmark_ticker="SPY",
+        relative_filter={"min_relative_strength_6m": -0.01, "penalty": 0.5, "apply_to_sleeves": ["factor"]},
+    )
+    assert "relative_strength_6m" in scored.columns
+    assert "benchmark_relative_fail" in scored.columns
+    assert bool(scored.loc["MTUM", "benchmark_relative_fail"]) is True
+    assert bool(scored.loc["QUAL", "benchmark_relative_fail"]) is False

@@ -310,6 +310,7 @@ The selection score is no longer just momentum plus trend. It now also includes:
 - `persistence` - how consistently returns have stayed positive
 - `recovery` - how much an asset has recovered from prior drawdown
 - `downside_efficiency` - total return earned per unit of downside burden
+- `relative_strength` - how strongly an ETF outperformed the benchmark on a relative basis
 
 The US ETF universe is also structured in sleeves:
 - core tickers
@@ -328,6 +329,11 @@ The selection layer also supports regime-conditional sleeve rotation:
 - `RISK_ON` can lean toward factor / sector sleeves
 - `RISK_OFF` can lean back toward core / defensive sleeves
 - backtest diagnostics now expose the latest applied sleeve policy and selected sleeve mix
+
+Sector and country sleeves now participate more explicitly in relative-strength selection:
+- sector / country ETFs are scored on benchmark-relative strength as well as absolute momentum
+- sleeve-aware risk budgeting still caps concentration after selection
+- `selection.benchmark_relative_filter` can penalize weak relative-strength ETFs in factor / sector / country sleeves before final selection
 
 For storage-constrained environments, provider validation outputs are designed to be parquet-first rather than CSV-first.
 This keeps research artifacts compact and analytics-friendly on smaller SSDs.

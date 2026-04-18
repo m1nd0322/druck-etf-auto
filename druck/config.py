@@ -136,6 +136,22 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
     if sleeve_budget and not isinstance(sleeve_budget, dict):
         raise ConfigError("config.selection.sleeve_budget must be a mapping")
 
+    benchmark_relative_filter = selection.get("benchmark_relative_filter", {})
+    if benchmark_relative_filter:
+        if not isinstance(benchmark_relative_filter, dict):
+            raise ConfigError("config.selection.benchmark_relative_filter must be a mapping")
+        enabled = benchmark_relative_filter.get("enabled", False)
+        if not isinstance(enabled, bool):
+            raise ConfigError("config.selection.benchmark_relative_filter.enabled must be boolean")
+        if "min_relative_strength_6m" in benchmark_relative_filter:
+            _require_number(benchmark_relative_filter, "min_relative_strength_6m", "config.selection.benchmark_relative_filter")
+        if "penalty" in benchmark_relative_filter:
+            _require_number(benchmark_relative_filter, "penalty", "config.selection.benchmark_relative_filter")
+        if "apply_to_sleeves" in benchmark_relative_filter:
+            sleeves = benchmark_relative_filter.get("apply_to_sleeves")
+            if not isinstance(sleeves, list) or not all(isinstance(v, str) and v.strip() for v in sleeves):
+                raise ConfigError("config.selection.benchmark_relative_filter.apply_to_sleeves must be a string list")
+
     regime_rotation = selection.get("regime_sleeve_rotation", {})
     if regime_rotation:
         if not isinstance(regime_rotation, dict):

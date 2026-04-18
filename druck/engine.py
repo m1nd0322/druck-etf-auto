@@ -94,11 +94,15 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
     all_px = pd.concat([kr_px, us_px.drop(columns=[c for c in ['^VIX'] if c in us_px.columns], errors='ignore')], axis=1)
 
     state = regime.state
+    sleeve_map_all = build_sleeve_map(all_px.columns, cfg.get('universe', {}).get('us', {}))
     scores = score_universe(
         all_px,
         cfg['selection']['score_weights'],
         regime_state=state,
         regime_factor_map=cfg.get('selection', {}).get('regime_factor_bias', {}),
+        sleeve_map=sleeve_map_all,
+        benchmark_ticker=cfg.get('backtest', {}).get('benchmark_ticker', 'SPY'),
+        relative_filter=cfg.get('selection', {}).get('benchmark_relative_filter', {}),
     )
     if scores.empty:
         raise RuntimeError("Not enough history to score universe")

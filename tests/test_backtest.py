@@ -15,7 +15,8 @@ def _base_cfg():
             "top_n_risk_on": 2,
             "top_n_risk_off": 1,
             "max_weight": 1.0,
-            "score_weights": {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "vol_penalty": 0.10, "dd_penalty": 0.10},
+            "score_weights": {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "relative_strength": 0.10, "vol_penalty": 0.10, "dd_penalty": 0.10},
+            "benchmark_relative_filter": {"enabled": True, "min_relative_strength_6m": -0.01, "penalty": 0.25, "apply_to_sleeves": ["factor", "sector", "country"]},
             "regime_sleeve_rotation": {
                 "enabled": True,
                 "RISK_ON": {"top_n": 2, "preferred_sleeves": ["factor"], "sleeve_budget": {"factor": 0.7, "core": 0.3}, "score_tilt": {"factor": 0.2}},
@@ -100,6 +101,8 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert "avg_overlap_ratio" in result.analytics["selection_score_comparison"]
     assert "avg_factor_selected_ratio" in result.analytics["selection_score_comparison"]
     assert "latest_factor_selected_tickers" in result.analytics["selection_score_comparison"]
+    assert "avg_relative_strength" in result.analytics["selection_score_comparison"]
+    assert "avg_benchmark_relative_fail_count" in result.analytics["selection_score_comparison"]
     assert "avg_rotation_top_n" in result.analytics["selection_score_comparison"]
     assert "latest_rotation_preferred_sleeves" in result.analytics["selection_score_comparison"]
     assert "latest_rotation_sleeve_budget" in result.analytics["selection_score_comparison"]
