@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from druck.data import _cache_key, fetch_prices, make_universe
+from druck.data import _cache_key, fetch_prices, make_universe, generate_kr_etf_universe
 
 
 def test_cache_key_is_stable():
@@ -89,3 +89,60 @@ def test_fetch_prices_raises_when_all_providers_fail(monkeypatch, tmp_path):
 
     with pytest.raises(RuntimeError, match="No data provider worked"):
         fetch_prices(["SPY"], "2024-01-01", "2024-01-03", prefer="auto", cache_dir=str(tmp_path), use_cache=False)
+
+
+def test_generate_kr_etf_universe_uses_etf_kr_listing_when_available(monkeypatch):
+    class FakeFDR:
+        @staticmethod
+        def StockListing(market):
+            assert market == "ETF/KR"
+            return pd.DataFrame({"Symbol": ["069500", "357870"]})
+
+    import sys
+    monkeypatch.setitem(sys.modules, "FinanceDataReader", FakeFDR)
+
+    tickers = generate_kr_etf_universe()
+    assert tickers[:2] == ["069500.KS", "357870.KS"]
+
+
+def test_generate_kr_etf_universe_falls_back_from_etf_kr_to_krx(monkeypatch):
+    class FakeFDR:
+        calls = []
+
+        @classmethod
+        def StockListing(cls, market):
+            cls.calls.append(market)
+            if market == "ETF/KR":
+                raise RuntimeError("ETF/KR unavailable")
+            return pd.DataFrame({"Code": ["114800"]})
+
+    import sys
+    monkeypatch.setitem(sys.modules, "FinanceDataReader", FakeFDR)
+
+    tickers = generate_kr_etf_universe()
+    assert FakeFDR.calls == ["ETF/KR", "KRX"]
+    assert tickers == ["114800.KS"]
+
+
+def test_generate_kr_etf_universe_falls_back_to_pykrx_and_preserves_white_black_lists(monkeypatch):
+    import sys
+
+    class BrokenFDR:
+        @staticmethod
+        def StockListing(market):
+            raise RuntimeError("fdr unavailable")
+
+    class FakeStock:
+        @staticmethod
+        def get_etf_ticker_list():
+            return ["069500", "114800"]
+
+    class FakePykrx:
+        stock = FakeStock
+
+    monkeypatch.setitem(sys.modules, "FinanceDataReader", BrokenFDR)
+    monkeypatch.setitem(sys.modules, "pykrx", FakePykrx)
+
+    tickers = generate_kr_etf_universe(whitelist=["069500.KS", "999999.KS"], blacklist=["114800.KS"])
+    assert "114800.KS" not in tickers
+    assert tickers == ["069500.KS", "999999.KS"]
