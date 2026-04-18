@@ -77,6 +77,7 @@ def test_backtest_api_returns_scenarios_and_analytics(tmp_path, monkeypatch):
         scenario_summary = __import__("pandas").DataFrame([{"scenario": "shock", "scenario_total_return": -0.2}])
         analytics = {
             "capacity_warning": {"status": "warning", "message": "too large"},
+            "sleeve_relative_warning": {"status": "warning", "message": "weak sleeve strength", "weak_sleeves": ["factor"], "avg_relative_strength": -0.03, "benchmark_relative_fail_count": 2},
             "selection_score_comparison": {"avg_score_uplift": 0.12, "avg_persistence": 0.55},
             "strategy_comparison": {
                 "robustness_summary": "enhanced wins 2, loses 1 across shared scenarios",
@@ -189,6 +190,13 @@ def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):
                 "status": "warning",
                 "message": "portfolio size exceeds estimated safe capacity",
             },
+            "sleeve_relative_warning": {
+                "status": "warning",
+                "message": "selected sleeve mix shows weak benchmark-relative strength",
+                "weak_sleeves": ["factor", "sector"],
+                "avg_relative_strength": -0.02,
+                "benchmark_relative_fail_count": 2,
+            },
             "strategy_comparison": {
                 "robustness_summary": "enhanced wins 2, loses 1 across shared scenarios",
                 "return_delta": 0.04,
@@ -209,4 +217,6 @@ def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):
     assert body["warnings"]["backtest_scenario_warning"]["scenario"] == "benchmark_gap_down"
     assert body["warnings"]["backtest_scenario_warning"]["review_required"] is True
     assert body["warnings"]["backtest_scenario_warning"]["operator_action"] == "compare active risk versus benchmark and review hedge stance"
+    assert body["warnings"]["backtest_sleeve_relative_warning"]["priority"] == 2
+    assert body["warnings"]["backtest_sleeve_relative_warning"]["weak_sleeves"] == ["factor", "sector"]
     assert body["warnings"]["strategy_comparison_summary"]["priority"] == 3

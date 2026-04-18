@@ -459,6 +459,25 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
                     "capacity_ratio": capacity_ratio,
                 }
 
+    sleeve_relative_warning = None
+    if not rebalance_log.empty and "selected_sleeves" in rebalance_log.columns and "selected_avg_relative_strength" in rebalance_log.columns:
+        latest_row = rebalance_log.iloc[-1]
+        latest_sleeves = latest_row.get("selected_sleeves", {}) or {}
+        target_sleeves = {"factor", "sector", "country"}
+        sleeve_counts = {sleeve: 0 for sleeve in target_sleeves}
+        for _ticker, sleeve in latest_sleeves.items():
+            if sleeve in target_sleeves:
+                sleeve_counts[sleeve] += 1
+        weak_sleeves = [sleeve for sleeve, count in sleeve_counts.items() if count > 0 and float(latest_row.get("selected_avg_relative_strength", 0.0)) < 0]
+        if weak_sleeves:
+            sleeve_relative_warning = {
+                "status": "warning",
+                "message": "selected sleeve mix shows weak benchmark-relative strength",
+                "weak_sleeves": weak_sleeves,
+                "avg_relative_strength": float(latest_row.get("selected_avg_relative_strength", 0.0)),
+                "benchmark_relative_fail_count": int(latest_row.get("benchmark_relative_fail_count", 0)),
+            }
+
     analytics = {
         "worst_day": float(daily_returns_series.min()) if not daily_returns_series.empty else 0.0,
         "best_day": float(daily_returns_series.max()) if not daily_returns_series.empty else 0.0,
@@ -466,6 +485,7 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
         "win_rate": float((daily_returns_series > 0).mean()) if not daily_returns_series.empty else 0.0,
         "factor_regime_attribution": factor_regime,
         "capacity_warning": capacity_warning,
+        "sleeve_relative_warning": sleeve_relative_warning,
         "selection_score_comparison": {
             "avg_score_uplift": float(rebalance_log['selected_avg_score_uplift'].mean()) if not rebalance_log.empty and 'selected_avg_score_uplift' in rebalance_log.columns else 0.0,
             "avg_persistence": float(rebalance_log['selected_avg_persistence'].mean()) if not rebalance_log.empty and 'selected_avg_persistence' in rebalance_log.columns else 0.0,

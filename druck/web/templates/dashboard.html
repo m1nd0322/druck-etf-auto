@@ -421,9 +421,13 @@ async function runBacktest() {
     }
     box.style.display = 'block';
     const warning = body.data.analytics && body.data.analytics.capacity_warning;
+    const sleeveRelativeWarning = body.data.analytics && body.data.analytics.sleeve_relative_warning;
     if (warning) {
       warningBox.style.display = 'block';
       warningBox.textContent = `${warning.message} (portfolio=${formatBacktestNumber(warning.portfolio_notional, 2)}, capacity=${formatBacktestNumber(warning.capacity_estimate, 2)}, ratio=${formatBacktestNumber(warning.capacity_ratio, 2)})`;
+    } else if (sleeveRelativeWarning) {
+      warningBox.style.display = 'block';
+      warningBox.textContent = `${sleeveRelativeWarning.message} (weak sleeves=${Array.isArray(sleeveRelativeWarning.weak_sleeves) ? sleeveRelativeWarning.weak_sleeves.join(', ') : ''}, avg relative strength=${formatBacktestNumber(sleeveRelativeWarning.avg_relative_strength, 4)}, fail count=${formatBacktestNumber(sleeveRelativeWarning.benchmark_relative_fail_count, 0)})`;
     } else {
       warningBox.style.display = 'none';
       warningBox.textContent = '';
