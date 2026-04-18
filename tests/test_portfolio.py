@@ -1,5 +1,6 @@
 import math
 
+import pytest
 import pandas as pd
 
 from druck.portfolio import allocate_weights, apply_risk_cuts, score_universe, apply_regime_factor_bias, apply_sleeve_budget, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation, resolve_factor_preference, apply_regime_factor_map
@@ -60,6 +61,7 @@ def test_regime_factor_map_prefers_overweight_and_penalizes_underweight():
     scores = pd.DataFrame(
         {
             "score": [1.0, 0.95, 0.94],
+            "relative_strength_6m": [0.0, 0.05, -0.02],
         },
         index=["SPY", "MTUM", "USMV"],
     )
@@ -80,6 +82,67 @@ def test_regime_factor_map_prefers_overweight_and_penalizes_underweight():
     adjusted = apply_regime_factor_map(scores, pref)
     assert adjusted.index[0] == "MTUM"
     assert adjusted.loc["USMV", "factor_map_bonus"] == -0.1
+
+
+def test_regime_factor_map_relative_strength_gate_penalizes_weak_preferred_factor():
+    scores = pd.DataFrame(
+        {
+            "score": [1.0, 0.96, 0.95],
+            "relative_strength_6m": [0.0, -0.03, 0.02],
+        },
+        index=["SPY", "MTUM", "QUAL"],
+    )
+    pref = resolve_factor_preference(
+        {
+            "regime_factor_map": {
+                "enabled": True,
+                "RISK_ON": {
+                    "overweight": ["MTUM"],
+                    "bonus": 0.2,
+                    "relative_strength_gate": {
+                        "enabled": True,
+                        "min_relative_strength_6m": -0.01,
+                        "mode": "penalty",
+                        "penalty": 0.15,
+                    },
+                }
+            }
+        },
+        "RISK_ON",
+    )
+    adjusted = apply_regime_factor_map(scores, pref)
+    assert bool(adjusted.loc["MTUM", "factor_gate_fail"]) is True
+    assert adjusted.loc["MTUM", "factor_map_bonus"] == pytest.approx(0.05)
+
+
+def test_regime_factor_map_relative_strength_gate_can_exclude_weak_preferred_factor():
+    scores = pd.DataFrame(
+        {
+            "score": [1.0, 0.96, 0.95],
+            "relative_strength_6m": [0.0, -0.03, 0.02],
+        },
+        index=["SPY", "MTUM", "QUAL"],
+    )
+    pref = resolve_factor_preference(
+        {
+            "regime_factor_map": {
+                "enabled": True,
+                "RISK_OFF": {
+                    "overweight": ["MTUM"],
+                    "bonus": 0.2,
+                    "relative_strength_gate": {
+                        "enabled": True,
+                        "min_relative_strength_6m": -0.01,
+                        "mode": "exclude",
+                        "penalty": 0.0,
+                    },
+                }
+            }
+        },
+        "RISK_OFF",
+    )
+    adjusted = apply_regime_factor_map(scores, pref)
+    assert "MTUM" not in adjusted.index
 
 
 def test_apply_sleeve_budget_caps_sleeve_totals():

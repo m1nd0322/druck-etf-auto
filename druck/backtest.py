@@ -168,7 +168,7 @@ def _prepare_prices_for_backtest(prices: pd.DataFrame, cfg: BacktestConfig, time
     return px.dropna(how="all"), diagnostics
 
 
-def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.Series, pd.DataFrame, pd.DataFrame, bool, str, str]:
+def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.Series, pd.DataFrame, pd.DataFrame, bool, str, str, dict]:
     regime = compute_macro_regime(px_window, cfg["macro_filter"]["thresholds"], cfg["macro_filter"]["components"])
     if is_vix_spike(px_window):
         regime.details["vix_spike_halt"] = True
@@ -214,7 +214,7 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     strategy_halt, halt_reason, halt_detail = _detect_strategy_halt(cfg, regime, selected, final_w, cuts, scores)
     selected.attrs["rotation_policy"] = rotation
     selected.attrs["selected_sleeves"] = {ticker: sleeve_map.get(ticker, "core") for ticker in selected.index}
-    return state, float(regime.risk_score), final_w, selected, cuts, strategy_halt, halt_reason, halt_detail
+    return state, float(regime.risk_score), final_w, selected, cuts, strategy_halt, halt_reason, halt_detail, factor_pref
 
 
 def _estimate_adv_metrics(selected: pd.DataFrame, volume_slice: pd.DataFrame | None, dt: pd.Timestamp, bt_cfg: BacktestConfig) -> tuple[float, float, float]:
@@ -340,7 +340,7 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
     for i, dt in enumerate(rebal_dates):
         idx = prices.index.get_loc(dt)
         window = prices.iloc[: idx + 1]
-        state, risk_score, target_weights, selected, cuts, strategy_halt, halt_reason, halt_detail = _select_weights(cfg, window)
+        state, risk_score, target_weights, selected, cuts, strategy_halt, halt_reason, halt_detail, factor_pref = _select_weights(cfg, window)
 
         if strategy_halt:
             target_weights = pd.Series(dtype=float)
@@ -378,6 +378,11 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
         factor_selected = [ticker for ticker in selected.index if ticker in factor_universe]
         rotation_policy = selected.attrs.get("rotation_policy", {}) if hasattr(selected, "attrs") else {}
         selected_sleeves = selected.attrs.get("selected_sleeves", {}) if hasattr(selected, "attrs") else {}
+        preferred_factors = [ticker for ticker in (factor_pref.get("overweight", []) if isinstance(factor_pref, dict) else []) if ticker in factor_universe]
+        selected_preferred_factors = [ticker for ticker in factor_selected if ticker in preferred_factors]
+        preferred_factor_min_count = int(factor_pref.get("min_count", 0)) if isinstance(factor_pref, dict) else 0
+        preferred_factor_gate_fail_count = int(selected["factor_gate_fail"].sum()) if not selected.empty and "factor_gate_fail" in selected.columns else 0
+        preferred_factor_min_count_met = len(selected_preferred_factors) >= preferred_factor_min_count if preferred_factor_min_count > 0 else True
         sleeve_contribution = {}
         for ticker, weight in current_weights.items():
             sleeve = selected_sleeves.get(ticker, "core")
@@ -419,6 +424,11 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
                 "rotation_preferred_sleeves": list(rotation_policy.get("preferred_sleeves", [])) if rotation_policy else [],
                 "rotation_sleeve_budget": dict(rotation_policy.get("sleeve_budget", {})) if rotation_policy else {},
                 "selected_sleeves": selected_sleeves,
+                "preferred_factors": preferred_factors,
+                "selected_preferred_factors": selected_preferred_factors,
+                "preferred_factor_min_count": preferred_factor_min_count,
+                "preferred_factor_min_count_met": preferred_factor_min_count_met,
+                "preferred_factor_gate_fail_count": preferred_factor_gate_fail_count,
                 "sleeve_contribution": sleeve_contribution,
                 "legacy_alpha_overlap": overlap,
                 "legacy_alpha_overlap_ratio": float(overlap / max(len(alpha_top), 1)) if alpha_top else 0.0,
@@ -505,8 +515,12 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
             "avg_downside_efficiency": float(rebalance_log['selected_avg_downside_efficiency'].mean()) if not rebalance_log.empty and 'selected_avg_downside_efficiency' in rebalance_log.columns else 0.0,
             "avg_relative_strength": float(rebalance_log['selected_avg_relative_strength'].mean()) if not rebalance_log.empty and 'selected_avg_relative_strength' in rebalance_log.columns else 0.0,
             "avg_benchmark_relative_fail_count": float(rebalance_log['benchmark_relative_fail_count'].mean()) if not rebalance_log.empty and 'benchmark_relative_fail_count' in rebalance_log.columns else 0.0,
+            "avg_preferred_factor_gate_fail_count": float(rebalance_log['preferred_factor_gate_fail_count'].mean()) if not rebalance_log.empty and 'preferred_factor_gate_fail_count' in rebalance_log.columns else 0.0,
+            "preferred_factor_min_count_hit_ratio": float(rebalance_log['preferred_factor_min_count_met'].mean()) if not rebalance_log.empty and 'preferred_factor_min_count_met' in rebalance_log.columns else 0.0,
             "avg_factor_selected_ratio": float(rebalance_log['factor_selected_ratio'].mean()) if not rebalance_log.empty and 'factor_selected_ratio' in rebalance_log.columns else 0.0,
             "latest_factor_selected_tickers": rebalance_log.iloc[-1]['factor_selected_tickers'] if not rebalance_log.empty and 'factor_selected_tickers' in rebalance_log.columns else [],
+            "latest_preferred_factors": rebalance_log.iloc[-1]['preferred_factors'] if not rebalance_log.empty and 'preferred_factors' in rebalance_log.columns else [],
+            "latest_selected_preferred_factors": rebalance_log.iloc[-1]['selected_preferred_factors'] if not rebalance_log.empty and 'selected_preferred_factors' in rebalance_log.columns else [],
             "avg_overlap_ratio": float(rebalance_log['legacy_alpha_overlap_ratio'].mean()) if not rebalance_log.empty and 'legacy_alpha_overlap_ratio' in rebalance_log.columns else 0.0,
             "avg_rotation_top_n": float(rebalance_log['rotation_top_n'].mean()) if not rebalance_log.empty and 'rotation_top_n' in rebalance_log.columns else 0.0,
             "latest_rotation_preferred_sleeves": rebalance_log.iloc[-1]['rotation_preferred_sleeves'] if not rebalance_log.empty and 'rotation_preferred_sleeves' in rebalance_log.columns else [],

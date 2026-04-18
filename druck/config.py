@@ -152,6 +152,20 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
             for number_key in ["bonus", "penalty", "min_count"]:
                 if number_key in regime_cfg and not isinstance(regime_cfg[number_key], (int, float)):
                     raise ConfigError(f"config.selection.regime_factor_map.{regime_key}.{number_key} must be numeric")
+            relative_gate = regime_cfg.get("relative_strength_gate", {})
+            if relative_gate:
+                if not isinstance(relative_gate, dict):
+                    raise ConfigError(f"config.selection.regime_factor_map.{regime_key}.relative_strength_gate must be a mapping")
+                if "enabled" in relative_gate and not isinstance(relative_gate.get("enabled"), bool):
+                    raise ConfigError(f"config.selection.regime_factor_map.{regime_key}.relative_strength_gate.enabled must be boolean")
+                if "min_relative_strength_6m" in relative_gate:
+                    _require_number(relative_gate, "min_relative_strength_6m", f"config.selection.regime_factor_map.{regime_key}.relative_strength_gate")
+                if "penalty" in relative_gate:
+                    _require_number(relative_gate, "penalty", f"config.selection.regime_factor_map.{regime_key}.relative_strength_gate")
+                if "mode" in relative_gate:
+                    mode = str(relative_gate.get("mode", "penalty"))
+                    if mode not in {"penalty", "exclude"}:
+                        raise ConfigError(f"config.selection.regime_factor_map.{regime_key}.relative_strength_gate.mode must be one of: penalty, exclude")
 
     sleeve_budget = selection.get("sleeve_budget", {})
     if sleeve_budget and not isinstance(sleeve_budget, dict):

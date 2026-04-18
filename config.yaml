@@ -105,18 +105,33 @@ selection:
       min_count: 1
       bonus: 0.18
       penalty: 0.08
+      relative_strength_gate:
+        enabled: true
+        min_relative_strength_6m: -0.01
+        mode: penalty
+        penalty: 0.10
     NEUTRAL:
       overweight: [QUAL, VLUE]
       underweight: [SIZE]
       min_count: 1
       bonus: 0.10
       penalty: 0.05
+      relative_strength_gate:
+        enabled: true
+        min_relative_strength_6m: -0.015
+        mode: penalty
+        penalty: 0.06
     RISK_OFF:
       overweight: [USMV, QUAL]
       underweight: [MTUM, SIZE]
       min_count: 1
       bonus: 0.20
       penalty: 0.10
+      relative_strength_gate:
+        enabled: true
+        min_relative_strength_6m: -0.02
+        mode: exclude
+        penalty: 0.0
   regime_sleeve_rotation:
     enabled: true
     RISK_ON:

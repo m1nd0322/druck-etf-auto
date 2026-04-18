@@ -17,6 +17,12 @@ def _base_cfg():
             "max_weight": 1.0,
             "score_weights": {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "relative_strength": 0.10, "vol_penalty": 0.10, "dd_penalty": 0.10},
             "benchmark_relative_filter": {"enabled": True, "min_relative_strength_6m": -0.01, "penalty": 0.25, "apply_to_sleeves": ["factor", "sector", "country"]},
+            "regime_factor_map": {
+                "enabled": True,
+                "RISK_ON": {"overweight": ["HYG"], "underweight": ["IEF"], "bonus": 0.15, "penalty": 0.05, "min_count": 1, "relative_strength_gate": {"enabled": True, "min_relative_strength_6m": -0.01, "mode": "penalty", "penalty": 0.08}},
+                "NEUTRAL": {"overweight": ["IEF"], "underweight": [], "bonus": 0.08, "penalty": 0.0, "min_count": 1, "relative_strength_gate": {"enabled": True, "min_relative_strength_6m": -0.02, "mode": "penalty", "penalty": 0.04}},
+                "RISK_OFF": {"overweight": ["IEF"], "underweight": ["HYG"], "bonus": 0.15, "penalty": 0.08, "min_count": 1, "relative_strength_gate": {"enabled": True, "min_relative_strength_6m": -0.02, "mode": "exclude", "penalty": 0.0}},
+            },
             "regime_sleeve_rotation": {
                 "enabled": True,
                 "RISK_ON": {"top_n": 2, "preferred_sleeves": ["factor"], "sleeve_budget": {"factor": 0.7, "core": 0.3}, "score_tilt": {"factor": 0.2}},
@@ -104,6 +110,10 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert "avg_relative_strength" in result.analytics["selection_score_comparison"]
     assert "avg_benchmark_relative_fail_count" in result.analytics["selection_score_comparison"]
     assert "avg_rotation_top_n" in result.analytics["selection_score_comparison"]
+    assert "avg_preferred_factor_gate_fail_count" in result.analytics["selection_score_comparison"]
+    assert "preferred_factor_min_count_hit_ratio" in result.analytics["selection_score_comparison"]
+    assert "latest_preferred_factors" in result.analytics["selection_score_comparison"]
+    assert "latest_selected_preferred_factors" in result.analytics["selection_score_comparison"]
     assert "latest_rotation_preferred_sleeves" in result.analytics["selection_score_comparison"]
     assert "latest_rotation_sleeve_budget" in result.analytics["selection_score_comparison"]
     assert "latest_selected_sleeves" in result.analytics["selection_score_comparison"]

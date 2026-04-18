@@ -28,6 +28,7 @@ def resolve_factor_preference(selection_cfg: dict | None, regime_state: str) -> 
     selection_cfg = selection_cfg or {}
     factor_map = selection_cfg.get("regime_factor_map", {}) or {}
     regime_cfg = factor_map.get(regime_state, {}) or {}
+    relative_gate = regime_cfg.get("relative_strength_gate", {}) or {}
     return {
         "enabled": bool(factor_map.get("enabled", False)),
         "overweight": list(regime_cfg.get("overweight", []) or []),
@@ -35,6 +36,12 @@ def resolve_factor_preference(selection_cfg: dict | None, regime_state: str) -> 
         "min_count": int(regime_cfg.get("min_count", 0) or 0),
         "bonus": float(regime_cfg.get("bonus", 0.0) or 0.0),
         "penalty": float(regime_cfg.get("penalty", 0.0) or 0.0),
+        "relative_strength_gate": {
+            "enabled": bool(relative_gate.get("enabled", False)),
+            "min_relative_strength_6m": float(relative_gate.get("min_relative_strength_6m", 0.0) or 0.0),
+            "mode": str(relative_gate.get("mode", "penalty") or "penalty").strip().lower(),
+            "penalty": float(relative_gate.get("penalty", 0.0) or 0.0),
+        },
     }
 
 
@@ -47,6 +54,22 @@ def apply_regime_factor_map(scores: pd.DataFrame, factor_pref: dict | None) -> p
     bonus = float(factor_pref.get("bonus", 0.0))
     penalty = float(factor_pref.get("penalty", 0.0))
     out["factor_map_bonus"] = [bonus if t in overweight else (-penalty if t in underweight else 0.0) for t in out.index]
+
+    gate = factor_pref.get("relative_strength_gate", {}) or {}
+    gate_enabled = bool(gate.get("enabled", False))
+    gate_threshold = float(gate.get("min_relative_strength_6m", 0.0))
+    gate_mode = str(gate.get("mode", "penalty") or "penalty").strip().lower()
+    gate_penalty = float(gate.get("penalty", 0.0))
+    gate_mask = out.index.to_series().isin(list(overweight)) & (out.get("relative_strength_6m", 0.0).fillna(-999.0) < gate_threshold)
+    out["factor_gate_fail"] = gate_mask if gate_enabled else False
+    out["factor_gate_excluded"] = False
+    if gate_enabled:
+        if gate_mode == "exclude":
+            out.loc[gate_mask, "factor_gate_excluded"] = True
+            out = out.loc[~gate_mask].copy()
+        elif gate_penalty > 0:
+            out.loc[gate_mask, "factor_map_bonus"] = out.loc[gate_mask, "factor_map_bonus"] - gate_penalty
+
     out["score"] = out["score"] + out["factor_map_bonus"]
     return out.sort_values("score", ascending=False)
 
