@@ -200,6 +200,20 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
             if key in correlation_diversification:
                 _require_number(correlation_diversification, key, "config.selection.correlation_diversification")
 
+    residual_strength_anchors = selection.get("residual_strength_anchors", {})
+    if residual_strength_anchors:
+        if not isinstance(residual_strength_anchors, dict):
+            raise ConfigError("config.selection.residual_strength_anchors must be a mapping")
+        if "enabled" in residual_strength_anchors and not isinstance(residual_strength_anchors.get("enabled"), bool):
+            raise ConfigError("config.selection.residual_strength_anchors.enabled must be boolean")
+        for key in ["lookback"]:
+            if key in residual_strength_anchors:
+                _require_number(residual_strength_anchors, key, "config.selection.residual_strength_anchors")
+        if "anchor_tickers" in residual_strength_anchors:
+            tickers = residual_strength_anchors.get("anchor_tickers")
+            if not isinstance(tickers, list) or not all(isinstance(v, str) and v.strip() for v in tickers):
+                raise ConfigError("config.selection.residual_strength_anchors.anchor_tickers must be a string list")
+
     benchmark_relative_filter = selection.get("benchmark_relative_filter", {})
     if benchmark_relative_filter:
         if not isinstance(benchmark_relative_filter, dict):

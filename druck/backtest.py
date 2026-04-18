@@ -190,6 +190,7 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
         relative_filter=cfg.get("selection", {}).get("benchmark_relative_filter", {}),
         factor_pref=factor_pref,
         correlation_cfg=cfg.get("selection", {}).get("correlation_diversification", {}),
+        residual_cfg=cfg.get("selection", {}).get("residual_strength_anchors", {}),
     )
     if scores.empty:
         raise RuntimeError("Not enough history to score universe")
@@ -421,6 +422,7 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
                 "selected_avg_capacity_score": float(selected["capacity_score"].mean()) if not selected.empty and "capacity_score" in selected.columns else 0.0,
                 "selected_avg_diversification_score": float(selected["diversification_score"].mean()) if not selected.empty and "diversification_score" in selected.columns else 0.0,
                 "selected_avg_diversification_penalty": float(selected["diversification_penalty"].mean()) if not selected.empty and "diversification_penalty" in selected.columns else 0.0,
+                "selected_avg_residual_strength": float(selected["residual_strength"].mean()) if not selected.empty and "residual_strength" in selected.columns else 0.0,
                 "benchmark_relative_fail_count": int(selected["benchmark_relative_fail"].sum()) if not selected.empty and "benchmark_relative_fail" in selected.columns else 0,
                 "factor_selected_count": len(factor_selected),
                 "factor_selected_ratio": float(len(factor_selected) / max(len(selected.index), 1)) if len(selected.index) > 0 else 0.0,
@@ -525,6 +527,7 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
             "avg_capacity_score": float(rebalance_log['selected_avg_capacity_score'].mean()) if not rebalance_log.empty and 'selected_avg_capacity_score' in rebalance_log.columns else 0.0,
             "avg_diversification_score": float(rebalance_log['selected_avg_diversification_score'].mean()) if not rebalance_log.empty and 'selected_avg_diversification_score' in rebalance_log.columns else 0.0,
             "avg_diversification_penalty": float(rebalance_log['selected_avg_diversification_penalty'].mean()) if not rebalance_log.empty and 'selected_avg_diversification_penalty' in rebalance_log.columns else 0.0,
+            "avg_residual_strength": float(rebalance_log['selected_avg_residual_strength'].mean()) if not rebalance_log.empty and 'selected_avg_residual_strength' in rebalance_log.columns else 0.0,
             "avg_benchmark_relative_fail_count": float(rebalance_log['benchmark_relative_fail_count'].mean()) if not rebalance_log.empty and 'benchmark_relative_fail_count' in rebalance_log.columns else 0.0,
             "avg_preferred_factor_gate_fail_count": float(rebalance_log['preferred_factor_gate_fail_count'].mean()) if not rebalance_log.empty and 'preferred_factor_gate_fail_count' in rebalance_log.columns else 0.0,
             "preferred_factor_min_count_hit_ratio": float(rebalance_log['preferred_factor_min_count_met'].mean()) if not rebalance_log.empty and 'preferred_factor_min_count_met' in rebalance_log.columns else 0.0,

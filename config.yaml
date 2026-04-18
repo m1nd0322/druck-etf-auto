@@ -88,8 +88,13 @@ selection:
     downside_efficiency: 0.12
     relative_strength: 0.16
     capacity_awareness: 0.08
+    residual_strength: 0.10
     vol_penalty: 0.10
     dd_penalty: 0.10
+  residual_strength_anchors:
+    enabled: true
+    lookback: 126
+    anchor_tickers: [SPY, TLT, UUP]
   correlation_diversification:
     enabled: true
     lookback: 63

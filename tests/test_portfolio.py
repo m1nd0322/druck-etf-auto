@@ -298,3 +298,21 @@ def test_score_universe_adds_diversification_columns_when_enabled():
     )
     assert "diversification_penalty" in scored.columns
     assert "diversification_score" in scored.columns
+
+
+def test_score_universe_adds_residual_strength_columns_when_enabled():
+    idx = pd.date_range("2024-01-01", periods=300, freq="D")
+    prices = pd.DataFrame({
+        "SPY": pd.Series([100 + i * 0.20 for i in range(300)], index=idx),
+        "TLT": pd.Series([100 + i * 0.05 + ((-1) ** i) * 0.05 for i in range(300)], index=idx),
+        "UUP": pd.Series([100 + i * 0.01 for i in range(300)], index=idx),
+        "QQQ": pd.Series([100 + i * 0.28 + (i % 7) * 0.03 for i in range(300)], index=idx),
+    })
+    sw = {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "relative_strength": 0.10, "residual_strength": 0.10, "vol_penalty": 0.10, "dd_penalty": 0.10}
+    scored = score_universe(
+        prices,
+        sw,
+        residual_cfg={"enabled": True, "lookback": 126, "anchor_tickers": ["SPY", "TLT", "UUP"]},
+    )
+    assert "residual_strength" in scored.columns
+    assert "residual_strength_z" in scored.columns

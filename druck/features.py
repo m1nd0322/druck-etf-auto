@@ -117,5 +117,29 @@ def relative_strength_vs_benchmark(prices: pd.Series, benchmark: pd.Series, look
     return float(asset_ret - bench_ret)
 
 
+def residual_strength_vs_anchors(prices: pd.Series, anchors: pd.DataFrame, lookback: int = 126) -> float:
+    if anchors is None or anchors.empty or len(prices) < lookback + 1:
+        return float("nan")
+    asset_ret = prices.pct_change(fill_method=None)
+    anchor_ret = anchors.pct_change(fill_method=None)
+    frame = pd.concat([asset_ret.rename("asset"), anchor_ret], axis=1).dropna()
+    if len(frame) < max(lookback, 20):
+        return float("nan")
+    window = frame.iloc[-lookback:]
+    y = window["asset"].astype(float)
+    x = window.drop(columns=["asset"]).astype(float)
+    if x.empty:
+        return float("nan")
+    x = x.loc[:, x.std(ddof=0) > 1e-12]
+    if x.empty:
+        return float(y.mean())
+    x_mat = np.column_stack([np.ones(len(x)), x.to_numpy()])
+    y_vec = y.to_numpy()
+    beta, *_ = np.linalg.lstsq(x_mat, y_vec, rcond=None)
+    fitted = x_mat @ beta
+    residual = y_vec - fitted
+    return float(np.mean(residual) * 252)
+
+
 def zscore(s: pd.Series) -> pd.Series:
     return (s - s.mean()) / (s.std(ddof=0) + 1e-12)

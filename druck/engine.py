@@ -107,6 +107,7 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         relative_filter=cfg.get('selection', {}).get('benchmark_relative_filter', {}),
         factor_pref=factor_pref,
         correlation_cfg=cfg.get('selection', {}).get('correlation_diversification', {}),
+        residual_cfg=cfg.get('selection', {}).get('residual_strength_anchors', {}),
     )
     if scores.empty:
         raise RuntimeError("Not enough history to score universe")

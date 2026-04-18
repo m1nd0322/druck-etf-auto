@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Tuple
 import numpy as np
 import pandas as pd
-from .features import momentum_score, trend_score, rolling_vol, max_drawdown, zscore, sma, trailing_drawdown, persistence_score, recovery_score, downside_efficiency, relative_strength_vs_benchmark, capacity_penalty_score
+from .features import momentum_score, trend_score, rolling_vol, max_drawdown, zscore, sma, trailing_drawdown, persistence_score, recovery_score, downside_efficiency, relative_strength_vs_benchmark, capacity_penalty_score, residual_strength_vs_anchors
 
 
 def compute_diversification_adjustment(scores: pd.DataFrame, correlation_cfg: dict | None = None) -> pd.DataFrame:
@@ -190,10 +190,14 @@ def apply_regime_factor_bias(scores: pd.DataFrame, regime_state: str, regime_fac
     return out.sort_values('score', ascending=False)
 
 
-def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = None, regime_factor_map: dict | None = None, sleeve_map: dict[str, str] | None = None, benchmark_ticker: str | None = "SPY", relative_filter: dict | None = None, factor_pref: dict | None = None, correlation_cfg: dict | None = None) -> pd.DataFrame:
+def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = None, regime_factor_map: dict | None = None, sleeve_map: dict[str, str] | None = None, benchmark_ticker: str | None = "SPY", relative_filter: dict | None = None, factor_pref: dict | None = None, correlation_cfg: dict | None = None, residual_cfg: dict | None = None) -> pd.DataFrame:
     rows=[]
     benchmark = prices[benchmark_ticker].dropna() if benchmark_ticker and benchmark_ticker in prices.columns else None
     relative_filter = relative_filter or {}
+    residual_cfg = residual_cfg or {}
+    anchor_tickers = [str(t) for t in residual_cfg.get('anchor_tickers', []) or [] if str(t) in prices.columns]
+    anchor_frame = prices[anchor_tickers] if bool(residual_cfg.get('enabled', False)) and anchor_tickers else pd.DataFrame()
+    residual_lookback = int(residual_cfg.get('lookback', 126) or 126)
     for t in prices.columns:
         p=prices[t].dropna()
         if len(p)<260:
@@ -210,6 +214,7 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
             'downside_efficiency': downside_efficiency(p, 126),
             'relative_strength_6m': rs_126,
             'capacity_score': capacity_penalty_score(p, 63),
+            'residual_strength': residual_strength_vs_anchors(p, anchor_frame.drop(columns=[t], errors='ignore'), residual_lookback) if bool(residual_cfg.get('enabled', False)) else 0.0,
             'vol':rolling_vol(p,63),
             'mdd_1y':max_drawdown(p,252),
         })
@@ -225,6 +230,7 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
     df['dd_z']=zscore(df['mdd_1y'])
     df['rel_strength_z']=zscore(df['relative_strength_6m'].fillna(0.0))
     df['capacity_z']=zscore(df['capacity_score'].fillna(0.0))
+    df['residual_strength_z']=zscore(df['residual_strength'].fillna(0.0))
     returns_corr = prices.pct_change(fill_method=None).tail(int((correlation_cfg or {}).get('lookback', 63) or 63)).corr() if len(prices.index) > 1 else pd.DataFrame()
     df.attrs['return_correlation'] = returns_corr
     df['legacy_score'] = _legacy_score(df, sw)
@@ -236,6 +242,7 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
         + float(sw.get('downside_efficiency', 0.15))*df['downside_z']
         + float(sw.get('relative_strength', 0.10))*df['rel_strength_z']
         + float(sw.get('capacity_awareness', 0.0))*df['capacity_z']
+        + float(sw.get('residual_strength', 0.0))*df['residual_strength_z']
         - float(sw['vol_penalty'])*df['vol_z']
         - float(sw['dd_penalty'])*df['dd_z']
     )

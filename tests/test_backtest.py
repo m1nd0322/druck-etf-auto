@@ -15,7 +15,8 @@ def _base_cfg():
             "top_n_risk_on": 2,
             "top_n_risk_off": 1,
             "max_weight": 1.0,
-            "score_weights": {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "relative_strength": 0.10, "capacity_awareness": 0.08, "vol_penalty": 0.10, "dd_penalty": 0.10},
+            "score_weights": {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "relative_strength": 0.10, "capacity_awareness": 0.08, "residual_strength": 0.10, "vol_penalty": 0.10, "dd_penalty": 0.10},
+            "residual_strength_anchors": {"enabled": True, "lookback": 126, "anchor_tickers": ["SPY", "TLT", "UUP"]},
             "correlation_diversification": {"enabled": True, "lookback": 63, "top_k": 3, "penalty": 0.12, "min_correlation": 0.60},
             "benchmark_relative_filter": {"enabled": True, "min_relative_strength_6m": -0.01, "penalty": 0.25, "apply_to_sleeves": ["factor", "sector", "country"]},
             "regime_factor_map": {
@@ -113,6 +114,7 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert "avg_capacity_score" in result.analytics["selection_score_comparison"]
     assert "avg_diversification_score" in result.analytics["selection_score_comparison"]
     assert "avg_diversification_penalty" in result.analytics["selection_score_comparison"]
+    assert "avg_residual_strength" in result.analytics["selection_score_comparison"]
     assert "avg_benchmark_relative_fail_count" in result.analytics["selection_score_comparison"]
     assert "avg_rotation_top_n" in result.analytics["selection_score_comparison"]
     assert "avg_preferred_factor_gate_fail_count" in result.analytics["selection_score_comparison"]

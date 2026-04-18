@@ -2,7 +2,7 @@ import math
 
 import pandas as pd
 
-from druck.features import pct_change_n, rolling_vol, sma, trailing_drawdown, momentum_score, persistence_score, recovery_score, downside_efficiency, relative_strength_vs_benchmark, capacity_penalty_score
+from druck.features import pct_change_n, rolling_vol, sma, trailing_drawdown, momentum_score, persistence_score, recovery_score, downside_efficiency, relative_strength_vs_benchmark, capacity_penalty_score, residual_strength_vs_anchors
 
 
 def test_sma_returns_last_window_average():
@@ -58,3 +58,13 @@ def test_capacity_penalty_score_prefers_smoother_series():
     smooth = pd.Series([100 + i * 0.2 for i in range(200)])
     jumpy = pd.Series([100 + i * 0.2 + ((-1) ** i) * 3 for i in range(200)])
     assert capacity_penalty_score(smooth, 63) > capacity_penalty_score(jumpy, 63)
+
+
+def test_residual_strength_vs_anchors_positive_for_asset_with_extra_independent_alpha():
+    n = 220
+    spy = pd.Series([100 + i * 0.20 for i in range(n)])
+    tlt = pd.Series([100 + i * 0.05 + ((-1) ** i) * 0.05 for i in range(n)])
+    uup = pd.Series([100 + i * 0.01 for i in range(n)])
+    asset = pd.Series([100 + i * 0.26 + ((i % 7) * 0.02) for i in range(n)])
+    anchors = pd.DataFrame({"SPY": spy, "TLT": tlt, "UUP": uup})
+    assert residual_strength_vs_anchors(asset, anchors, 126) > 0
