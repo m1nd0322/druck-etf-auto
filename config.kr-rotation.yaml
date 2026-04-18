@@ -1,0 +1,247 @@
+mode:
+  dry_run: true
+  enable_kiwoom: false
+
+data:
+  lookback_years: 3
+  price_provider: auto
+  cache_csv: true
+  cache_dir: ".cache"
+
+universe:
+  kr:
+    auto_generate: false
+    include_leveraged: false
+    include_inverse: false
+    core_tickers:
+      - 069500.KS
+    attack_tickers:
+      - 091160.KS
+      - 102960.KS
+    satellite_tickers:
+      - 139230.KS
+    defensive_tickers:
+      - 130730.KS
+      - 114260.KS
+      - 132030.KS
+    cash_ticker: 130730.KS
+    whitelist_tickers:
+      - 069500.KS   # KODEX 200
+      - 091160.KS   # KODEX 반도체
+      - 102960.KS   # KODEX 기계장비
+      - 139230.KS   # TIGER 200 중공업 (satellite)
+      - 130730.KS   # KOSEF 단기자금
+      - 114260.KS   # KODEX 국고채3년
+      - 132030.KS   # KODEX 골드선물(H)
+    blacklist_tickers: []
+  us:
+    auto_generate: false
+    tickers:
+      - SPY
+      - TLT
+      - UUP
+      - ^VIX
+    factor_tickers: []
+    sector_tickers: []
+    country_tickers: []
+
+macro_filter:
+  enabled: true
+  thresholds:
+    risk_on_score_min: 0.55
+    risk_off_score_max: 0.45
+  components:
+    spy_trend_weight: 0.35
+    usd_mom_weight: 0.20
+    credit_weight: 0.00
+    vix_weight: 0.25
+    rates_weight: 0.20
+  rates_overlay:
+    up_threshold: 0.02
+    down_threshold: -0.02
+
+selection:
+  top_n_risk_on: 4
+  top_n_risk_off: 2
+  max_weight: 0.30
+  regime_factor_bias: {}
+  score_weights:
+    momentum: 0.26
+    trend: 0.20
+    persistence: 0.16
+    recovery: 0.10
+    downside_efficiency: 0.10
+    relative_strength: 0.20
+    capacity_awareness: 0.06
+    residual_strength: 0.08
+    vol_penalty: 0.10
+    dd_penalty: 0.10
+  residual_strength_anchors:
+    enabled: true
+    lookback: 126
+    anchor_tickers:
+      - 069500.KS
+      - 229200.KS
+      - 130730.KS
+  correlation_diversification:
+    enabled: true
+    lookback: 63
+    top_k: 2
+    penalty: 0.18
+    min_correlation: 0.55
+  benchmark_relative_filter:
+    enabled: true
+    mode: exclude
+    min_relative_strength_6m: 0.03
+    penalty: 0.40
+    apply_to_sleeves: [kr_attack]
+  sleeve_budget:
+    kr_core: 0.50
+    kr_attack: 0.25
+    kr_satellite: 0.15
+    defensive: 0.65
+  regime_factor_map:
+    enabled: false
+  regime_sleeve_rotation:
+    enabled: true
+    RISK_ON:
+      top_n: 3
+      preferred_sleeves: [kr_attack]
+      sleeve_budget:
+        kr_core: 0.45
+        kr_attack: 0.25
+        kr_satellite: 0.15
+        defensive: 0.20
+      score_tilt:
+        kr_attack: 0.10
+        kr_satellite: 0.08
+        kr_core: 0.08
+    NEUTRAL:
+      top_n: 2
+      preferred_sleeves: [kr_core, defensive]
+      sleeve_budget:
+        kr_core: 0.40
+        kr_attack: 0.10
+        kr_satellite: 0.10
+        defensive: 0.45
+      score_tilt:
+        kr_core: 0.05
+        kr_satellite: 0.04
+        defensive: 0.10
+    RISK_OFF:
+      top_n: 2
+      preferred_sleeves: [defensive]
+      sleeve_budget:
+        kr_core: 0.20
+        kr_attack: 0.10
+        kr_satellite: 0.05
+        defensive: 0.90
+      score_tilt:
+        defensive: 0.18
+        kr_attack: -0.08
+
+risk_cut:
+  enabled: true
+  rules:
+    below_200sma_cut: true
+    trailing_dd_cut: -0.10
+    hard_stop_cut: -0.16
+  action:
+    cut_to_cash: true
+    cash_us: SHY
+    cash_kr: 130730.KS
+
+rebalance:
+  min_trade_weight_diff: 0.01
+  round_shares: true
+  commission_bps: 1.5
+
+backtest:
+  rebalance_frequency: M
+  transaction_cost_bps: 1.5
+  slippage_bps: 3.0
+  market_impact_bps_per_turnover: 5.0
+  liquidity_vol_multiplier_bps: 2.0
+  starting_capital: 1.0
+  benchmark_ticker: 069500.KS
+  min_history_days: 252
+  strict_point_in_time: true
+  drop_incomplete_assets: true
+  enforce_delist_exit: true
+  universe_timeline_path: ""
+  volume_data_path: ""
+  adv_window_days: 20
+  max_participation_rate: 0.10
+  capacity_safety_factor: 0.25
+  scenarios:
+    enabled: true
+    stress_return_shock: -0.05
+    vol_multiplier: 1.5
+    presets:
+      - name: return_shock_and_vol_up
+        severity: high
+        tags: [stress, drawdown, volatility]
+        operator_action: reduce risk and review KR sector concentration
+        review_required: true
+        note_template: "Review KR sector concentration and confirm defensive posture."
+        return_shock: -0.05
+        vol_multiplier: 1.5
+        benchmark_shock: 0.0
+      - name: benchmark_gap_down
+        severity: high
+        tags: [stress, benchmark, gap]
+        operator_action: compare active KR risk versus KOSPI proxy and review de-risking stance
+        review_required: true
+        note_template: "Check KR benchmark-relative weakness and decide whether to reduce exposure."
+        return_shock: -0.02
+        vol_multiplier: 1.2
+        benchmark_shock: -0.04
+      - name: volatility_crush
+        severity: medium
+        tags: [comparison, volatility]
+        operator_action: monitor KR regime assumptions
+        review_required: false
+        note_template: "Confirm whether lower-volatility assumptions still fit current KR market structure."
+        return_shock: 0.0
+        vol_multiplier: 0.7
+        benchmark_shock: 0.0
+  walkforward:
+    enabled: true
+    train_days: 252
+    test_days: 42
+    step_days: 42
+
+strategy_halt:
+  enabled: true
+  max_cut_asset_ratio: 0.80
+  min_risk_score: 0.20
+  max_negative_momentum_assets: 2
+  performance:
+    enabled: true
+    min_average_score: 0.00
+    max_average_momentum: -0.02
+    recent_total_return: -0.03
+    benchmark_ticker: 069500.KS
+    benchmark_relative_return: -0.08
+
+schedule:
+  timezone: "Asia/Seoul"
+  report_weekly:
+    day_of_week: "sat"
+    hour: 9
+    minute: 5
+  risk_check_daily:
+    hour: 16
+    minute: 5
+
+notifier:
+  telegram:
+    enabled: false
+    bot_token_env: "TELEGRAM_BOT_TOKEN"
+    chat_id_env: "TELEGRAM_CHAT_ID"
+
+kiwoom:
+  account_no: ""
+  market_order: true
+  split_n: 3
+  slippage_limit_bps: 30

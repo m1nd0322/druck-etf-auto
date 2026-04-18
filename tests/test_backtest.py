@@ -239,6 +239,52 @@ def test_run_backtest_drops_incomplete_assets_and_marks_delisted(monkeypatch, tm
     assert "DELIST" not in last_weights or last_weights.get("DELIST", 0.0) == 0.0
 
 
+def test_run_backtest_excludes_macro_helper_assets_from_selection_candidates(monkeypatch):
+    cfg = _base_cfg()
+    cfg["universe"] = {
+        "kr": {
+            "auto_generate": False,
+            "tickers": ["069500.KS", "130730.KS"],
+            "whitelist_tickers": [],
+            "cash_ticker": "130730.KS",
+            "core_tickers": ["069500.KS"],
+            "attack_tickers": [],
+            "defensive_tickers": ["130730.KS"],
+        },
+        "us": {
+            "tickers": ["SPY", "UUP", "^VIX"],
+            "factor_tickers": [],
+            "sector_tickers": [],
+            "country_tickers": [],
+        },
+    }
+    cfg["selection"]["top_n_risk_on"] = 2
+    cfg["selection"]["top_n_risk_off"] = 1
+    cfg["backtest"]["benchmark_ticker"] = "069500.KS"
+    cfg["risk_cut"]["action"]["cash_kr"] = "130730.KS"
+
+    idx = pd.date_range("2024-01-01", periods=420, freq="B")
+    px = pd.DataFrame({
+        "069500.KS": pd.Series([100 + i * 0.20 for i in range(420)], index=idx),
+        "130730.KS": pd.Series([100 + i * 0.01 for i in range(420)], index=idx),
+        "SPY": pd.Series([100 + i * 0.60 for i in range(420)], index=idx),
+        "UUP": pd.Series([100 + i * 0.40 for i in range(420)], index=idx),
+        "^VIX": pd.Series([18.0] * 420, index=idx),
+    })
+
+    monkeypatch.setattr("druck.backtest.make_universe", lambda cfg: type("U", (), {"kr": ["069500.KS", "130730.KS"], "us": ["SPY", "UUP", "^VIX"]})())
+    monkeypatch.setattr("druck.backtest.fetch_prices", lambda tickers, start, end, prefer='auto', cache_dir=None, use_cache=True: px[tickers])
+
+    result = run_backtest(cfg)
+    assert not result.rebalance_log.empty
+    for picks in result.rebalance_log["alpha_top_picks"]:
+        assert "SPY" not in picks
+        assert "UUP" not in picks
+    for weights in result.rebalance_log["weights"]:
+        assert "SPY" not in weights
+        assert "UUP" not in weights
+
+
 def test_run_backtest_flags_capacity_warning_when_portfolio_exceeds_estimate(monkeypatch, tmp_path):
     cfg = _base_cfg()
     cfg["backtest"]["starting_capital"] = 1_000_000.0

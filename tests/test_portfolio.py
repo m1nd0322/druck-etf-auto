@@ -183,6 +183,23 @@ def test_apply_sleeve_budget_caps_sleeve_totals():
     assert budgeted[["MTUM", "QUAL"]].sum() <= 0.25 + 1e-9
 
 
+def test_build_sleeve_map_supports_kr_specific_sleeves():
+    sleeve_map = build_sleeve_map(
+        ["069500.KS", "091160.KS", "139230.KS", "130730.KS", "SPY"],
+        {
+            "kr_core_tickers": ["069500.KS"],
+            "kr_attack_tickers": ["091160.KS"],
+            "kr_satellite_tickers": ["139230.KS"],
+            "kr_defensive_tickers": ["130730.KS"],
+        },
+    )
+    assert sleeve_map["069500.KS"] == "kr_core"
+    assert sleeve_map["091160.KS"] == "kr_attack"
+    assert sleeve_map["139230.KS"] == "kr_satellite"
+    assert sleeve_map["130730.KS"] == "defensive"
+    assert sleeve_map["SPY"] == "core"
+
+
 def test_regime_rotation_prefers_configured_sleeves_and_top_n():
     scores = pd.DataFrame(
         {
@@ -224,14 +241,14 @@ def test_score_universe_applies_benchmark_relative_penalty_to_target_sleeves():
         "MTUM": pd.Series([100 + i * 0.1 for i in range(300)], index=idx),
         "QUAL": pd.Series([100 + i * 0.35 for i in range(300)], index=idx),
     })
-    sleeve_map = {"SPY": "core", "MTUM": "factor", "QUAL": "factor"}
+    sleeve_map = {"SPY": "kr_core", "MTUM": "kr_attack", "QUAL": "kr_attack"}
     sw = {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "relative_strength": 0.10, "vol_penalty": 0.10, "dd_penalty": 0.10}
     scored = score_universe(
         prices,
         sw,
         sleeve_map=sleeve_map,
         benchmark_ticker="SPY",
-        relative_filter={"enabled": True, "mode": "penalty", "min_relative_strength_6m": -0.01, "penalty": 0.5, "apply_to_sleeves": ["factor"]},
+        relative_filter={"enabled": True, "mode": "penalty", "min_relative_strength_6m": -0.01, "penalty": 0.5, "apply_to_sleeves": ["kr_attack"]},
     )
     assert "relative_strength_6m" in scored.columns
     assert "benchmark_relative_fail" in scored.columns
@@ -246,14 +263,14 @@ def test_score_universe_can_hard_exclude_benchmark_relative_failures():
         "MTUM": pd.Series([100 + i * 0.1 for i in range(300)], index=idx),
         "QUAL": pd.Series([100 + i * 0.35 for i in range(300)], index=idx),
     })
-    sleeve_map = {"SPY": "core", "MTUM": "factor", "QUAL": "factor"}
+    sleeve_map = {"SPY": "kr_core", "MTUM": "kr_attack", "QUAL": "kr_attack"}
     sw = {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "relative_strength": 0.10, "vol_penalty": 0.10, "dd_penalty": 0.10}
     scored = score_universe(
         prices,
         sw,
         sleeve_map=sleeve_map,
         benchmark_ticker="SPY",
-        relative_filter={"enabled": True, "mode": "exclude", "min_relative_strength_6m": -0.01, "penalty": 0.5, "apply_to_sleeves": ["factor"]},
+        relative_filter={"enabled": True, "mode": "exclude", "min_relative_strength_6m": -0.01, "penalty": 0.5, "apply_to_sleeves": ["kr_attack"]},
     )
     assert "MTUM" not in scored.index
     assert "QUAL" in scored.index

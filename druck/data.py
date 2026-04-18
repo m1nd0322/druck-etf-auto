@@ -1,5 +1,7 @@
 from __future__ import annotations
+import contextlib
 import hashlib
+import io
 import os
 import re
 import sys
@@ -101,12 +103,14 @@ def make_universe(cfg: dict) -> Universe:
         us_country=list(dict.fromkeys(us_country)),
     )
 
-def fetch_prices_yf(tickers: List[str], start: str, end: str) -> pd.DataFrame:
+def fetch_prices_yf(tickers: List[str], start: str, end: str) -> tuple[pd.DataFrame, str]:
     import yfinance as yf
-    df = yf.download(tickers, start=start, end=end, auto_adjust=True, progress=False)['Close']
+    stderr_buffer = io.StringIO()
+    with contextlib.redirect_stderr(stderr_buffer):
+        df = yf.download(tickers, start=start, end=end, auto_adjust=True, progress=False)['Close']
     if isinstance(df, pd.Series):
         df = df.to_frame()
-    return df.dropna(how='all')
+    return df.dropna(how='all'), stderr_buffer.getvalue().strip()
 
 def fetch_prices_fdr(tickers: List[str], start: str, end: str) -> pd.DataFrame:
     import FinanceDataReader as fdr
@@ -137,7 +141,7 @@ def _classify_provider_issue(detail: str) -> str:
 def _extract_issue_tickers(detail: str) -> list[str]:
     if not detail:
         return []
-    matches = re.findall(r"'([A-Z0-9^._-]+)'", detail)
+    matches = re.findall(r"['\"]([A-Z0-9^._-]+)['\"]", detail)
     return list(dict.fromkeys(matches))
 
 
@@ -219,7 +223,18 @@ def fetch_prices(tickers: List[str], start: str, end: str, prefer: str='auto', c
     if missing_tickers:
         if prefer in ('yf','auto'):
             try:
-                dfs.append(fetch_prices_yf(missing_tickers,start,end))
+                yf_result = fetch_prices_yf(missing_tickers,start,end)
+                if isinstance(yf_result, tuple):
+                    yf_df, yf_stderr = yf_result
+                else:
+                    yf_df, yf_stderr = yf_result, ""
+                if not yf_df.empty:
+                    dfs.append(yf_df)
+                if yf_stderr:
+                    provider_issues.append(ProviderIssue(provider="yfinance", category=_classify_provider_issue(yf_stderr), detail=yf_stderr, tickers=_extract_issue_tickers(yf_stderr) or missing_tickers.copy()))
+                missing_after_yf = [t for t in missing_tickers if t not in yf_df.columns] if not yf_df.empty else list(missing_tickers)
+                if missing_after_yf and missing_after_yf != missing_tickers:
+                    missing_tickers = missing_after_yf
             except Exception as exc:
                 detail = str(exc)
                 provider_issues.append(ProviderIssue(provider="yfinance", category=_classify_provider_issue(detail), detail=detail, tickers=_extract_issue_tickers(detail) or missing_tickers.copy()))

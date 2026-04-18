@@ -58,6 +58,10 @@ def build_sleeve_map(tickers: list[str] | pd.Index, universe_cfg: dict | None) -
     factor = set(universe_cfg.get("factor_tickers", []) or [])
     sector = set(universe_cfg.get("sector_tickers", []) or [])
     country = set(universe_cfg.get("country_tickers", []) or [])
+    kr_core = set(universe_cfg.get("kr_core_tickers", []) or [])
+    kr_attack = set(universe_cfg.get("kr_attack_tickers", []) or [])
+    kr_satellite = set(universe_cfg.get("kr_satellite_tickers", []) or [])
+    kr_defensive = set(universe_cfg.get("kr_defensive_tickers", []) or [])
     sleeve_map: dict[str, str] = {}
     for ticker in [str(t) for t in tickers]:
         if ticker in factor:
@@ -66,6 +70,14 @@ def build_sleeve_map(tickers: list[str] | pd.Index, universe_cfg: dict | None) -
             sleeve_map[ticker] = "sector"
         elif ticker in country:
             sleeve_map[ticker] = "country"
+        elif ticker in kr_attack:
+            sleeve_map[ticker] = "kr_attack"
+        elif ticker in kr_satellite:
+            sleeve_map[ticker] = "kr_satellite"
+        elif ticker in kr_defensive:
+            sleeve_map[ticker] = "defensive"
+        elif ticker in kr_core:
+            sleeve_map[ticker] = "kr_core"
         else:
             sleeve_map[ticker] = "core"
     return sleeve_map

@@ -12,6 +12,34 @@ from .macro import compute_macro_regime, compute_rates_overlay, is_vix_spike
 from .portfolio import allocate_weights, apply_risk_cuts, score_universe, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation, resolve_factor_preference
 
 
+def _selection_candidate_tickers(cfg: dict) -> list[str]:
+    ucfg = cfg.get("universe", {}) or {}
+    kr_cfg = ucfg.get("kr", {}) or {}
+    us_cfg = ucfg.get("us", {}) or {}
+    kr_manual = list(kr_cfg.get("tickers", []) or []) + list(kr_cfg.get("whitelist_tickers", []) or [])
+    kr_manual = list(dict.fromkeys([str(t) for t in kr_manual if str(t).strip()]))
+    if kr_manual:
+        return kr_manual
+    us_manual = (
+        list(us_cfg.get("tickers", []) or [])
+        + list(us_cfg.get("factor_tickers", []) or [])
+        + list(us_cfg.get("sector_tickers", []) or [])
+        + list(us_cfg.get("country_tickers", []) or [])
+    )
+    return list(dict.fromkeys([str(t) for t in us_manual if str(t).strip()]))
+
+
+def _combined_sleeve_map(cfg: dict, tickers: list[str] | pd.Index) -> dict[str, str]:
+    tickers = [str(t) for t in tickers]
+    kr_cfg = cfg.get("universe", {}).get("kr", {}) or {}
+    us_cfg = dict(cfg.get("universe", {}).get("us", {}) or {})
+    us_cfg["kr_core_tickers"] = list(kr_cfg.get("core_tickers", []) or [])
+    us_cfg["kr_attack_tickers"] = list(kr_cfg.get("attack_tickers", []) or [])
+    us_cfg["kr_satellite_tickers"] = list(kr_cfg.get("satellite_tickers", []) or [])
+    us_cfg["kr_defensive_tickers"] = list(kr_cfg.get("defensive_tickers", []) or [kr_cfg.get("cash_ticker", cfg.get("risk_cut", {}).get("action", {}).get("cash_kr", "130730.KS"))])
+    return build_sleeve_map(tickers, us_cfg)
+
+
 @dataclass
 class BacktestResult:
     equity_curve: pd.Series
@@ -173,12 +201,16 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     if is_vix_spike(px_window):
         regime.details["vix_spike_halt"] = True
 
-    all_px = px_window.drop(columns=[c for c in ["^VIX"] if c in px_window.columns], errors="ignore")
-    active_cols = [col for col in all_px.columns if pd.notna(all_px[col].iloc[-1])]
-    all_px = all_px[active_cols]
+    macro_px = px_window.drop(columns=[c for c in ["^VIX"] if c in px_window.columns], errors="ignore")
+    active_macro_cols = [col for col in macro_px.columns if pd.notna(macro_px[col].iloc[-1])]
+    macro_px = macro_px[active_macro_cols]
+    candidate_tickers = [t for t in _selection_candidate_tickers(cfg) if t in macro_px.columns]
+    if not candidate_tickers:
+        candidate_tickers = list(macro_px.columns)
+    all_px = macro_px[candidate_tickers].copy()
     state = regime.state
-    sleeve_map_all = build_sleeve_map(all_px.columns, cfg.get("universe", {}).get("us", {}))
-    rates_overlay = compute_rates_overlay(all_px, cfg.get("macro_filter", {}).get("rates_overlay", {}))
+    sleeve_map_all = _combined_sleeve_map(cfg, all_px.columns)
+    rates_overlay = compute_rates_overlay(macro_px, cfg.get("macro_filter", {}).get("rates_overlay", {}))
     factor_pref = resolve_factor_preference(cfg.get("selection", {}), state, rates_overlay=rates_overlay)
     scores = score_universe(
         all_px,
@@ -197,7 +229,7 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     top_on = int(cfg["selection"]["top_n_risk_on"])
     top_off = int(cfg["selection"]["top_n_risk_off"])
     rotation = resolve_regime_rotation(cfg.get("selection", {}), state, top_on, top_off)
-    sleeve_map_all = build_sleeve_map(scores.index, cfg.get("universe", {}).get("us", {}))
+    sleeve_map_all = _combined_sleeve_map(cfg, scores.index)
     rotated_scores = apply_sleeve_rotation(scores, sleeve_map_all, rotation)
     if state == "RISK_ON":
         selected = rotated_scores.head(rotation["top_n"]).copy()
@@ -208,10 +240,10 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     else:
         selected = rotated_scores.head(rotation["top_n"]).copy()
 
-    cash = cfg["risk_cut"]["action"]["cash_us"]
+    cash = cfg["risk_cut"]["action"].get("cash_kr") if any(str(t).endswith('.KS') for t in selected.index) else cfg["risk_cut"]["action"]["cash_us"]
     sleeve_factor = set(cfg.get("universe", {}).get("us", {}).get("factor_tickers", []))
     factor_selected = [ticker for ticker in selected.index if ticker in sleeve_factor]
-    sleeve_map = build_sleeve_map(selected.index, cfg.get("universe", {}).get("us", {}))
+    sleeve_map = _combined_sleeve_map(cfg, selected.index)
     weights = allocate_weights(selected, float(cfg["selection"]["max_weight"]), sleeve_map=sleeve_map, sleeve_budget=rotation.get("sleeve_budget"))
     final_w, cuts = apply_risk_cuts(all_px, weights, cfg["risk_cut"], cash_ticker=cash)
     strategy_halt, halt_reason, halt_detail = _detect_strategy_halt(cfg, regime, selected, final_w, cuts, scores)

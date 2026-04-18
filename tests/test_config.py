@@ -104,6 +104,43 @@ def test_validate_config_rejects_invalid_schedule_hour():
         validate_config(cfg)
 
 
+def test_validate_config_accepts_kr_rotation_specific_fields():
+    cfg = VALID_CFG | {
+        "universe": VALID_CFG["universe"] | {
+            "kr": {
+                "auto_generate": False,
+                "include_leveraged": False,
+                "include_inverse": False,
+                "core_tickers": ["069500.KS"],
+                "attack_tickers": ["091160.KS", "102960.KS"],
+                "satellite_tickers": ["139230.KS"],
+                "defensive_tickers": ["130730.KS", "114260.KS"],
+                "cash_ticker": "130730.KS",
+                "whitelist_tickers": ["069500.KS", "091160.KS", "102960.KS", "139230.KS", "130730.KS", "114260.KS"],
+                "blacklist_tickers": [],
+            }
+        },
+        "selection": VALID_CFG["selection"] | {
+            "benchmark_relative_filter": {"enabled": True, "mode": "exclude", "min_relative_strength_6m": 0.03, "penalty": 0.40, "apply_to_sleeves": ["kr_attack"]},
+            "correlation_diversification": {"enabled": True, "lookback": 63, "top_k": 2, "penalty": 0.18, "min_correlation": 0.55},
+            "sleeve_budget": {"kr_core": 0.50, "kr_attack": 0.25, "kr_satellite": 0.15, "defensive": 0.65},
+            "regime_sleeve_rotation": {
+                "enabled": True,
+                "RISK_ON": {"top_n": 3, "preferred_sleeves": ["kr_attack", "kr_satellite"], "sleeve_budget": {"kr_core": 0.45, "kr_attack": 0.25, "kr_satellite": 0.15, "defensive": 0.20}, "score_tilt": {"kr_attack": 0.10, "kr_satellite": 0.08, "kr_core": 0.08}},
+                "NEUTRAL": {"top_n": 2, "preferred_sleeves": ["kr_core", "defensive"], "sleeve_budget": {"kr_core": 0.40, "kr_attack": 0.10, "kr_satellite": 0.10, "defensive": 0.45}, "score_tilt": {"kr_core": 0.05, "kr_satellite": 0.04, "defensive": 0.10}},
+                "RISK_OFF": {"top_n": 2, "preferred_sleeves": ["defensive"], "sleeve_budget": {"kr_core": 0.20, "kr_attack": 0.10, "kr_satellite": 0.05, "defensive": 0.90}, "score_tilt": {"defensive": 0.18, "kr_attack": -0.08}},
+            },
+        },
+        "backtest": VALID_CFG["backtest"] | {"benchmark_ticker": "069500.KS"},
+    }
+    validated = validate_config(cfg)
+    assert validated["selection"]["benchmark_relative_filter"]["apply_to_sleeves"] == ["kr_attack"]
+    assert validated["selection"]["regime_sleeve_rotation"]["RISK_ON"]["top_n"] == 3
+    assert validated["selection"]["sleeve_budget"]["kr_core"] == 0.50
+    assert validated["selection"]["sleeve_budget"]["kr_satellite"] == 0.15
+    assert validated["universe"]["kr"]["attack_tickers"] == ["091160.KS", "102960.KS"]
+
+
 def test_load_config_reads_yaml(tmp_path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text(

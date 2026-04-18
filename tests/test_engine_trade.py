@@ -170,6 +170,77 @@ def test_run_once_halts_trading_on_performance_degradation(monkeypatch):
         run_once(cfg, do_trade=True, broker=FakeBroker())
 
 
+def test_run_once_supports_kr_sleeve_rotation_and_budgeting(monkeypatch):
+    cfg = {
+        "mode": {"enable_kiwoom": False, "dry_run": True},
+        "data": {"lookback_years": 3, "price_provider": "auto", "cache_csv": True, "cache_dir": ".cache"},
+        "universe": {
+            "kr": {
+                "auto_generate": False,
+                "tickers": ["069500.KS", "091160.KS", "139230.KS", "130730.KS"],
+                "core_tickers": ["069500.KS"],
+                "attack_tickers": ["091160.KS"],
+                "satellite_tickers": ["139230.KS"],
+                "defensive_tickers": ["130730.KS"],
+                "cash_ticker": "130730.KS",
+            },
+            "us": {"tickers": ["SPY", "TLT", "UUP", "^VIX"], "factor_tickers": [], "sector_tickers": [], "country_tickers": []},
+        },
+        "selection": {
+            "top_n_risk_on": 2,
+            "top_n_risk_off": 1,
+            "max_weight": 1.0,
+            "score_weights": {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "relative_strength": 0.10, "vol_penalty": 0.10, "dd_penalty": 0.10},
+            "benchmark_relative_filter": {"enabled": True, "mode": "exclude", "min_relative_strength_6m": 0.0, "penalty": 0.25, "apply_to_sleeves": ["kr_attack"]},
+            "regime_sleeve_rotation": {"enabled": True, "RISK_ON": {"top_n": 3, "preferred_sleeves": ["kr_attack", "kr_satellite"], "sleeve_budget": {"kr_core": 0.45, "kr_attack": 0.25, "kr_satellite": 0.15, "defensive": 0.20}, "score_tilt": {"kr_attack": 0.18, "kr_satellite": 0.08, "kr_core": 0.04}}},
+        },
+        "macro_filter": {
+            "thresholds": {"risk_on_score_min": 0.55, "risk_off_score_max": 0.45},
+            "components": {"spy_trend_weight": 0.35, "usd_mom_weight": 0.20, "credit_weight": 0.0, "vix_weight": 0.25, "rates_weight": 0.20},
+            "rates_overlay": {"up_threshold": 0.02, "down_threshold": -0.02},
+        },
+        "risk_cut": {
+            "enabled": True,
+            "rules": {"below_200sma_cut": True, "trailing_dd_cut": -0.12, "hard_stop_cut": -0.18},
+            "action": {"cut_to_cash": True, "cash_us": "SHY", "cash_kr": "130730.KS"},
+        },
+        "rebalance": {"min_trade_weight_diff": 0.01, "round_shares": True},
+        "strategy_halt": {"enabled": False},
+        "backtest": {"benchmark_ticker": "069500.KS"},
+    }
+
+    idx = pd.date_range("2024-01-01", periods=320, freq="D")
+    kr_px = pd.DataFrame({
+        "069500.KS": pd.Series([100 + i * 0.22 for i in range(320)], index=idx),
+        "091160.KS": pd.Series([100 + i * 0.10 for i in range(320)], index=idx),
+        "139230.KS": pd.Series([100 + i * 0.18 for i in range(320)], index=idx),
+        "130730.KS": pd.Series([100 + i * 0.01 for i in range(320)], index=idx),
+    })
+    us_px = pd.DataFrame({
+        "SPY": pd.Series([100 + i * 0.40 for i in range(320)], index=idx),
+        "TLT": pd.Series([100 + i * 0.03 for i in range(320)], index=idx),
+        "UUP": pd.Series([100 - i * 0.02 for i in range(320)], index=idx),
+        "^VIX": pd.Series([15 + (i % 3) * 0.1 for i in range(320)], index=idx),
+    })
+
+    monkeypatch.setattr("druck.engine.make_universe", lambda cfg: type("U", (), {"kr": ["069500.KS", "091160.KS", "139230.KS", "130730.KS"], "us": ["SPY", "TLT", "UUP", "^VIX"]})())
+
+    def fake_fetch_prices(tickers, start, end, prefer='auto', cache_dir=None, use_cache=True):
+        frame = kr_px if any(str(t).endswith('.KS') for t in tickers) else us_px
+        return frame[tickers]
+
+    monkeypatch.setattr("druck.engine.fetch_prices", fake_fetch_prices)
+    monkeypatch.setattr("druck.engine.save_report", lambda out_dir, selection, regime_details, cuts: "output/report_test.md")
+    monkeypatch.setattr("druck.engine.send_telegram", lambda cfg, msg: None)
+
+    result = run_once(cfg, do_trade=False)
+    assert result["selected_sleeves"]["069500.KS"] == "kr_core"
+    assert result["rotation_policy"]["preferred_sleeves"] == ["kr_attack", "kr_satellite"]
+    assert result["rotation_policy"]["sleeve_budget"]["kr_satellite"] == 0.15
+    assert "091160.KS" not in result["scores"].index
+
+
+
 def test_run_once_returns_provider_warning_summary(monkeypatch):
     cfg = {
         "mode": {"enable_kiwoom": False, "dry_run": True},

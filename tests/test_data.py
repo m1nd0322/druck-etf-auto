@@ -182,3 +182,23 @@ def test_fetch_prices_attaches_provider_warning_summary(monkeypatch, tmp_path):
     assert summary["counts"]["rate_limit"] == 1
     assert summary["tickers"]["rate_limit"] == ["SPY"]
     assert "provider rate-limit detected" in summary["summary"]
+
+
+def test_fetch_prices_records_yf_partial_success_stderr_noise(monkeypatch, tmp_path):
+    idx = pd.to_datetime(["2024-01-01", "2024-01-02"])
+    partial_close = pd.DataFrame({"069500.KS": [100.0, 101.0]}, index=idx)
+    fdr_close = pd.DataFrame({"229200.KS": [200.0, 201.0]}, index=idx)
+
+    monkeypatch.setattr("druck.data._HAS_SHARED_DATA", False)
+    monkeypatch.setattr("druck.data._SHARED_DATA_IMPORT_ERROR", None)
+    monkeypatch.setattr(
+        "druck.data.fetch_prices_yf",
+        lambda tickers, start, end: (partial_close, '"229200.KS" invalid symbol or has no data'),
+    )
+    monkeypatch.setattr("druck.data.fetch_prices_fdr", lambda tickers, start, end: fdr_close if tickers == ["229200.KS"] else pd.DataFrame())
+
+    result = fetch_prices(["069500.KS", "229200.KS"], "2024-01-01", "2024-01-03", prefer="auto", cache_dir=str(tmp_path), use_cache=False)
+    assert list(result.columns) == ["069500.KS", "229200.KS"]
+    summary = result.attrs.get("provider_warning_summary", {})
+    assert summary["counts"]["invalid_symbol"] == 1
+    assert summary["tickers"]["invalid_symbol"] == ["229200.KS"]

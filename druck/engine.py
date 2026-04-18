@@ -3,6 +3,17 @@ import pandas as pd
 from .data import make_universe, fetch_prices, get_date_range
 from .macro import compute_macro_regime, compute_rates_overlay, is_vix_spike
 from .portfolio import score_universe, allocate_weights, apply_risk_cuts, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation, resolve_factor_preference
+
+
+def _combined_sleeve_cfg(cfg: dict) -> dict:
+    universe = cfg.get('universe', {}) or {}
+    us_cfg = dict(universe.get('us', {}) or {})
+    kr_cfg = universe.get('kr', {}) or {}
+    us_cfg['kr_core_tickers'] = list(kr_cfg.get('core_tickers', []) or [])
+    us_cfg['kr_attack_tickers'] = list(kr_cfg.get('attack_tickers', []) or [])
+    us_cfg['kr_satellite_tickers'] = list(kr_cfg.get('satellite_tickers', []) or [])
+    us_cfg['kr_defensive_tickers'] = list(kr_cfg.get('defensive_tickers', []) or [kr_cfg.get('cash_ticker', cfg.get('risk_cut', {}).get('action', {}).get('cash_kr', '130730.KS'))])
+    return us_cfg
 from .report import save_report
 from .notifier import send_telegram
 from .runtime import StrategyHaltError
@@ -100,7 +111,8 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
     all_px = pd.concat([kr_px, us_px.drop(columns=[c for c in ['^VIX'] if c in us_px.columns], errors='ignore')], axis=1)
 
     state = regime.state
-    sleeve_map_all = build_sleeve_map(all_px.columns, cfg.get('universe', {}).get('us', {}))
+    sleeve_cfg = _combined_sleeve_cfg(cfg)
+    sleeve_map_all = build_sleeve_map(all_px.columns, sleeve_cfg)
     rates_overlay = compute_rates_overlay(all_px, cfg.get('macro_filter', {}).get('rates_overlay', {}))
     factor_pref = resolve_factor_preference(cfg.get('selection', {}), state, rates_overlay=rates_overlay)
     scores = score_universe(
@@ -121,7 +133,7 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
     top_on = int(cfg['selection']['top_n_risk_on'])
     top_off = int(cfg['selection']['top_n_risk_off'])
     rotation = resolve_regime_rotation(cfg.get('selection', {}), state, top_on, top_off)
-    sleeve_map_all = build_sleeve_map(scores.index, cfg.get('universe', {}).get('us', {}))
+    sleeve_map_all = build_sleeve_map(scores.index, sleeve_cfg)
     rotated_scores = apply_sleeve_rotation(scores, sleeve_map_all, rotation)
 
     if state == 'RISK_ON':
@@ -133,10 +145,10 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
     else:
         selected = rotated_scores.head(rotation['top_n']).copy()
 
-    selected_sleeve_map = build_sleeve_map(selected.index, cfg.get('universe', {}).get('us', {}))
+    selected_sleeve_map = build_sleeve_map(selected.index, sleeve_cfg)
     w = allocate_weights(selected, float(cfg['selection']['max_weight']), sleeve_map=selected_sleeve_map, sleeve_budget=rotation.get('sleeve_budget'))
 
-    cash = cfg['risk_cut']['action']['cash_us']
+    cash = cfg['risk_cut']['action'].get('cash_kr') if any(str(t).endswith('.KS') for t in selected.index) else cfg['risk_cut']['action']['cash_us']
     final_w, cuts = apply_risk_cuts(all_px, w, cfg['risk_cut'], cash_ticker=cash)
 
     out = selected.copy()
