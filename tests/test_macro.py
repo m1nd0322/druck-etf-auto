@@ -1,6 +1,6 @@
 import pandas as pd
 
-from druck.macro import compute_macro_regime, is_vix_spike
+from druck.macro import compute_macro_regime, compute_rates_overlay, is_vix_spike
 
 
 def make_price_frame():
@@ -35,3 +35,10 @@ def test_compute_macro_regime_returns_risk_on_for_supportive_inputs():
     regime = compute_macro_regime(px, thresholds, weights)
     assert regime.state == "RISK_ON"
     assert regime.risk_score >= 0.55
+
+
+def test_compute_rates_overlay_detects_falling_rate_support():
+    px = make_price_frame()
+    overlay = compute_rates_overlay(px, {"up_threshold": 0.02, "down_threshold": -0.02})
+    assert overlay["direction"] == "falling"
+    assert overlay["score"] > 0

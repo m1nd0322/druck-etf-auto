@@ -166,6 +166,23 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
                     mode = str(relative_gate.get("mode", "penalty"))
                     if mode not in {"penalty", "exclude"}:
                         raise ConfigError(f"config.selection.regime_factor_map.{regime_key}.relative_strength_gate.mode must be one of: penalty, exclude")
+            rates_overlay = regime_cfg.get("rates_overlay", {})
+            if rates_overlay:
+                if not isinstance(rates_overlay, dict):
+                    raise ConfigError(f"config.selection.regime_factor_map.{regime_key}.rates_overlay must be a mapping")
+                for direction_key in ["falling", "neutral", "rising"]:
+                    overlay_cfg = rates_overlay.get(direction_key, {})
+                    if overlay_cfg and not isinstance(overlay_cfg, dict):
+                        raise ConfigError(f"config.selection.regime_factor_map.{regime_key}.rates_overlay.{direction_key} must be a mapping")
+                    if not overlay_cfg:
+                        continue
+                    for list_key in ["overweight", "underweight"]:
+                        values = overlay_cfg.get(list_key, [])
+                        if values and (not isinstance(values, list) or not all(isinstance(v, str) and v.strip() for v in values)):
+                            raise ConfigError(f"config.selection.regime_factor_map.{regime_key}.rates_overlay.{direction_key}.{list_key} must be a string list")
+                    for number_key in ["bonus", "penalty"]:
+                        if number_key in overlay_cfg and not isinstance(overlay_cfg[number_key], (int, float)):
+                            raise ConfigError(f"config.selection.regime_factor_map.{regime_key}.rates_overlay.{direction_key}.{number_key} must be numeric")
 
     sleeve_budget = selection.get("sleeve_budget", {})
     if sleeve_budget and not isinstance(sleeve_budget, dict):
@@ -230,6 +247,13 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
     for key in ["spy_trend_weight", "usd_mom_weight", "credit_weight", "vix_weight", "rates_weight"]:
         _require_number(components, key, "config.macro_filter.components")
     _validate_weights_sum(components, "config.macro_filter.components")
+    rates_overlay_cfg = macro_filter.get("rates_overlay", {})
+    if rates_overlay_cfg:
+        if not isinstance(rates_overlay_cfg, dict):
+            raise ConfigError("config.macro_filter.rates_overlay must be a mapping")
+        for key in ["up_threshold", "down_threshold"]:
+            if key in rates_overlay_cfg:
+                _require_number(rates_overlay_cfg, key, "config.macro_filter.rates_overlay")
 
     _require_bool(risk_cut, "enabled", "config.risk_cut")
     rules = _require_dict(risk_cut, "rules", "config.risk_cut")

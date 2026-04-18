@@ -1,7 +1,7 @@
 from __future__ import annotations
 import pandas as pd
 from .data import make_universe, fetch_prices, get_date_range
-from .macro import compute_macro_regime, is_vix_spike
+from .macro import compute_macro_regime, compute_rates_overlay, is_vix_spike
 from .portfolio import score_universe, allocate_weights, apply_risk_cuts, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation, resolve_factor_preference
 from .report import save_report
 from .notifier import send_telegram
@@ -95,7 +95,8 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
 
     state = regime.state
     sleeve_map_all = build_sleeve_map(all_px.columns, cfg.get('universe', {}).get('us', {}))
-    factor_pref = resolve_factor_preference(cfg.get('selection', {}), state)
+    rates_overlay = compute_rates_overlay(all_px, cfg.get('macro_filter', {}).get('rates_overlay', {}))
+    factor_pref = resolve_factor_preference(cfg.get('selection', {}), state, rates_overlay=rates_overlay)
     scores = score_universe(
         all_px,
         cfg['selection']['score_weights'],

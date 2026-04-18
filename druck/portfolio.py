@@ -24,18 +24,26 @@ def build_sleeve_map(tickers: list[str] | pd.Index, universe_cfg: dict | None) -
     return sleeve_map
 
 
-def resolve_factor_preference(selection_cfg: dict | None, regime_state: str) -> dict:
+def resolve_factor_preference(selection_cfg: dict | None, regime_state: str, rates_overlay: dict | None = None) -> dict:
     selection_cfg = selection_cfg or {}
     factor_map = selection_cfg.get("regime_factor_map", {}) or {}
     regime_cfg = factor_map.get(regime_state, {}) or {}
+    rates_overlay = rates_overlay or {}
     relative_gate = regime_cfg.get("relative_strength_gate", {}) or {}
+    rates_cfg = regime_cfg.get("rates_overlay", {}) or {}
+    rates_direction = str(rates_overlay.get("direction", "neutral") or "neutral")
+    overlay = rates_cfg.get(rates_direction, {}) or {}
+    overweight = list(regime_cfg.get("overweight", []) or []) + list(overlay.get("overweight", []) or [])
+    underweight = list(regime_cfg.get("underweight", []) or []) + list(overlay.get("underweight", []) or [])
     return {
         "enabled": bool(factor_map.get("enabled", False)),
-        "overweight": list(regime_cfg.get("overweight", []) or []),
-        "underweight": list(regime_cfg.get("underweight", []) or []),
+        "overweight": list(dict.fromkeys(overweight)),
+        "underweight": list(dict.fromkeys(underweight)),
         "min_count": int(regime_cfg.get("min_count", 0) or 0),
-        "bonus": float(regime_cfg.get("bonus", 0.0) or 0.0),
-        "penalty": float(regime_cfg.get("penalty", 0.0) or 0.0),
+        "bonus": float(regime_cfg.get("bonus", 0.0) or 0.0) + float(overlay.get("bonus", 0.0) or 0.0),
+        "penalty": float(regime_cfg.get("penalty", 0.0) or 0.0) + float(overlay.get("penalty", 0.0) or 0.0),
+        "rates_direction": rates_direction,
+        "rates_overlay": overlay,
         "relative_strength_gate": {
             "enabled": bool(relative_gate.get("enabled", False)),
             "min_relative_strength_6m": float(relative_gate.get("min_relative_strength_6m", 0.0) or 0.0),

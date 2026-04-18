@@ -19,9 +19,9 @@ def _base_cfg():
             "benchmark_relative_filter": {"enabled": True, "min_relative_strength_6m": -0.01, "penalty": 0.25, "apply_to_sleeves": ["factor", "sector", "country"]},
             "regime_factor_map": {
                 "enabled": True,
-                "RISK_ON": {"overweight": ["HYG"], "underweight": ["IEF"], "bonus": 0.15, "penalty": 0.05, "min_count": 1, "relative_strength_gate": {"enabled": True, "min_relative_strength_6m": -0.01, "mode": "penalty", "penalty": 0.08}},
-                "NEUTRAL": {"overweight": ["IEF"], "underweight": [], "bonus": 0.08, "penalty": 0.0, "min_count": 1, "relative_strength_gate": {"enabled": True, "min_relative_strength_6m": -0.02, "mode": "penalty", "penalty": 0.04}},
-                "RISK_OFF": {"overweight": ["IEF"], "underweight": ["HYG"], "bonus": 0.15, "penalty": 0.08, "min_count": 1, "relative_strength_gate": {"enabled": True, "min_relative_strength_6m": -0.02, "mode": "exclude", "penalty": 0.0}},
+                "RISK_ON": {"overweight": ["HYG"], "underweight": ["IEF"], "bonus": 0.15, "penalty": 0.05, "min_count": 1, "relative_strength_gate": {"enabled": True, "min_relative_strength_6m": -0.01, "mode": "penalty", "penalty": 0.08}, "rates_overlay": {"falling": {"overweight": ["HYG"], "underweight": [], "bonus": 0.05, "penalty": 0.0}, "rising": {"overweight": ["IEF"], "underweight": ["HYG"], "bonus": 0.04, "penalty": 0.03}}},
+                "NEUTRAL": {"overweight": ["IEF"], "underweight": [], "bonus": 0.08, "penalty": 0.0, "min_count": 1, "relative_strength_gate": {"enabled": True, "min_relative_strength_6m": -0.02, "mode": "penalty", "penalty": 0.04}, "rates_overlay": {"falling": {"overweight": ["IEF"], "underweight": [], "bonus": 0.03, "penalty": 0.0}}},
+                "RISK_OFF": {"overweight": ["IEF"], "underweight": ["HYG"], "bonus": 0.15, "penalty": 0.08, "min_count": 1, "relative_strength_gate": {"enabled": True, "min_relative_strength_6m": -0.02, "mode": "exclude", "penalty": 0.0}, "rates_overlay": {"rising": {"overweight": ["IEF"], "underweight": ["HYG"], "bonus": 0.05, "penalty": 0.02}}},
             },
             "regime_sleeve_rotation": {
                 "enabled": True,
@@ -33,6 +33,7 @@ def _base_cfg():
         "macro_filter": {
             "thresholds": {"risk_on_score_min": 0.55, "risk_off_score_max": 0.45},
             "components": {"spy_trend_weight": 0.3, "usd_mom_weight": 0.15, "credit_weight": 0.2, "vix_weight": 0.2, "rates_weight": 0.15},
+            "rates_overlay": {"up_threshold": 0.02, "down_threshold": -0.02},
         },
         "risk_cut": {
             "enabled": True,
@@ -114,6 +115,9 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert "preferred_factor_min_count_hit_ratio" in result.analytics["selection_score_comparison"]
     assert "latest_preferred_factors" in result.analytics["selection_score_comparison"]
     assert "latest_selected_preferred_factors" in result.analytics["selection_score_comparison"]
+    assert "rates_direction_counts" in result.analytics["selection_score_comparison"]
+    assert "avg_rates_overlay_bonus" in result.analytics["selection_score_comparison"]
+    assert "avg_rates_overlay_penalty" in result.analytics["selection_score_comparison"]
     assert "latest_rotation_preferred_sleeves" in result.analytics["selection_score_comparison"]
     assert "latest_rotation_sleeve_budget" in result.analytics["selection_score_comparison"]
     assert "latest_selected_sleeves" in result.analytics["selection_score_comparison"]

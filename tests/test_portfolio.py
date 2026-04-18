@@ -145,6 +145,37 @@ def test_regime_factor_map_relative_strength_gate_can_exclude_weak_preferred_fac
     assert "MTUM" not in adjusted.index
 
 
+def test_resolve_factor_preference_applies_rates_overlay():
+    pref = resolve_factor_preference(
+        {
+            "regime_factor_map": {
+                "enabled": True,
+                "RISK_ON": {
+                    "overweight": ["MTUM"],
+                    "underweight": ["USMV"],
+                    "bonus": 0.2,
+                    "penalty": 0.1,
+                    "rates_overlay": {
+                        "falling": {
+                            "overweight": ["QUAL"],
+                            "underweight": ["VLUE"],
+                            "bonus": 0.05,
+                            "penalty": 0.02,
+                        }
+                    },
+                }
+            }
+        },
+        "RISK_ON",
+        rates_overlay={"direction": "falling"},
+    )
+    assert pref["rates_direction"] == "falling"
+    assert pref["bonus"] == pytest.approx(0.25)
+    assert pref["penalty"] == pytest.approx(0.12)
+    assert "QUAL" in pref["overweight"]
+    assert "VLUE" in pref["underweight"]
+
+
 def test_apply_sleeve_budget_caps_sleeve_totals():
     weights = pd.Series({"SPY": 0.30, "MTUM": 0.30, "QUAL": 0.20, "XLF": 0.20})
     sleeve_map = {"SPY": "core", "MTUM": "factor", "QUAL": "factor", "XLF": "sector"}

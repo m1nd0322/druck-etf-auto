@@ -8,7 +8,7 @@ import pandas as pd
 
 from .data import fetch_prices, get_date_range, make_universe
 from .engine import _detect_strategy_halt
-from .macro import compute_macro_regime, is_vix_spike
+from .macro import compute_macro_regime, compute_rates_overlay, is_vix_spike
 from .portfolio import allocate_weights, apply_risk_cuts, score_universe, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation, resolve_factor_preference
 
 
@@ -178,7 +178,8 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     all_px = all_px[active_cols]
     state = regime.state
     sleeve_map_all = build_sleeve_map(all_px.columns, cfg.get("universe", {}).get("us", {}))
-    factor_pref = resolve_factor_preference(cfg.get("selection", {}), state)
+    rates_overlay = compute_rates_overlay(all_px, cfg.get("macro_filter", {}).get("rates_overlay", {}))
+    factor_pref = resolve_factor_preference(cfg.get("selection", {}), state, rates_overlay=rates_overlay)
     scores = score_universe(
         all_px,
         cfg["selection"]["score_weights"],
@@ -429,6 +430,9 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
                 "preferred_factor_min_count": preferred_factor_min_count,
                 "preferred_factor_min_count_met": preferred_factor_min_count_met,
                 "preferred_factor_gate_fail_count": preferred_factor_gate_fail_count,
+                "rates_direction": str(factor_pref.get("rates_direction", "neutral")),
+                "rates_overlay_bonus": float(factor_pref.get("rates_overlay", {}).get("bonus", 0.0) or 0.0),
+                "rates_overlay_penalty": float(factor_pref.get("rates_overlay", {}).get("penalty", 0.0) or 0.0),
                 "sleeve_contribution": sleeve_contribution,
                 "legacy_alpha_overlap": overlap,
                 "legacy_alpha_overlap_ratio": float(overlap / max(len(alpha_top), 1)) if alpha_top else 0.0,
@@ -521,6 +525,9 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
             "latest_factor_selected_tickers": rebalance_log.iloc[-1]['factor_selected_tickers'] if not rebalance_log.empty and 'factor_selected_tickers' in rebalance_log.columns else [],
             "latest_preferred_factors": rebalance_log.iloc[-1]['preferred_factors'] if not rebalance_log.empty and 'preferred_factors' in rebalance_log.columns else [],
             "latest_selected_preferred_factors": rebalance_log.iloc[-1]['selected_preferred_factors'] if not rebalance_log.empty and 'selected_preferred_factors' in rebalance_log.columns else [],
+            "rates_direction_counts": rebalance_log['rates_direction'].value_counts().to_dict() if not rebalance_log.empty and 'rates_direction' in rebalance_log.columns else {},
+            "avg_rates_overlay_bonus": float(rebalance_log['rates_overlay_bonus'].mean()) if not rebalance_log.empty and 'rates_overlay_bonus' in rebalance_log.columns else 0.0,
+            "avg_rates_overlay_penalty": float(rebalance_log['rates_overlay_penalty'].mean()) if not rebalance_log.empty and 'rates_overlay_penalty' in rebalance_log.columns else 0.0,
             "avg_overlap_ratio": float(rebalance_log['legacy_alpha_overlap_ratio'].mean()) if not rebalance_log.empty and 'legacy_alpha_overlap_ratio' in rebalance_log.columns else 0.0,
             "avg_rotation_top_n": float(rebalance_log['rotation_top_n'].mean()) if not rebalance_log.empty and 'rotation_top_n' in rebalance_log.columns else 0.0,
             "latest_rotation_preferred_sleeves": rebalance_log.iloc[-1]['rotation_preferred_sleeves'] if not rebalance_log.empty and 'rotation_preferred_sleeves' in rebalance_log.columns else [],

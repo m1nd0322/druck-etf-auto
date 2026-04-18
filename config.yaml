@@ -64,6 +64,9 @@ macro_filter:
     credit_weight: 0.20
     vix_weight: 0.20
     rates_weight: 0.15
+  rates_overlay:
+    up_threshold: 0.02
+    down_threshold: -0.02
 
 selection:
   top_n_risk_on: 8
@@ -110,6 +113,17 @@ selection:
         min_relative_strength_6m: -0.01
         mode: penalty
         penalty: 0.10
+      rates_overlay:
+        falling:
+          overweight: [MTUM, QUAL]
+          underweight: [VLUE]
+          bonus: 0.06
+          penalty: 0.02
+        rising:
+          overweight: [VLUE]
+          underweight: [MTUM]
+          bonus: 0.04
+          penalty: 0.05
     NEUTRAL:
       overweight: [QUAL, VLUE]
       underweight: [SIZE]
@@ -121,6 +135,17 @@ selection:
         min_relative_strength_6m: -0.015
         mode: penalty
         penalty: 0.06
+      rates_overlay:
+        falling:
+          overweight: [QUAL]
+          underweight: []
+          bonus: 0.04
+          penalty: 0.0
+        rising:
+          overweight: [VLUE]
+          underweight: [QUAL]
+          bonus: 0.04
+          penalty: 0.03
     RISK_OFF:
       overweight: [USMV, QUAL]
       underweight: [MTUM, SIZE]
@@ -132,6 +157,17 @@ selection:
         min_relative_strength_6m: -0.02
         mode: exclude
         penalty: 0.0
+      rates_overlay:
+        falling:
+          overweight: [QUAL]
+          underweight: []
+          bonus: 0.03
+          penalty: 0.0
+        rising:
+          overweight: [USMV]
+          underweight: [MTUM]
+          bonus: 0.05
+          penalty: 0.03
   regime_sleeve_rotation:
     enabled: true
     RISK_ON:

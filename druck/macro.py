@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Any
 import numpy as np
 import pandas as pd
 from .features import sma, momentum_score, pct_change_n
@@ -22,6 +22,26 @@ def is_vix_spike(px: pd.DataFrame, mult: float = 1.25) -> bool:
     cur = float(v.iloc[-1])
     ma20 = float(v.rolling(20).mean().iloc[-1])
     return cur > ma20 * float(mult)
+
+def compute_rates_overlay(px: pd.DataFrame, cfg: dict | None = None) -> dict[str, Any]:
+    cfg = cfg or {}
+    tlt = px.get("TLT")
+    if tlt is None or len(tlt.dropna()) <= 260:
+        return {"direction": "neutral", "score": 0.0, "trend_63d": 0.0, "trend_126d": 0.0}
+    t = tlt.dropna()
+    trend_63d = float(t.iloc[-1] / t.iloc[-64] - 1.0) if len(t) > 64 else 0.0
+    trend_126d = float(t.iloc[-1] / t.iloc[-127] - 1.0) if len(t) > 127 else 0.0
+    score = 0.5 * trend_63d + 0.5 * trend_126d
+    up_threshold = float(cfg.get("up_threshold", 0.02))
+    down_threshold = float(cfg.get("down_threshold", -0.02))
+    if score >= up_threshold:
+        direction = "falling"
+    elif score <= down_threshold:
+        direction = "rising"
+    else:
+        direction = "neutral"
+    return {"direction": direction, "score": float(score), "trend_63d": trend_63d, "trend_126d": trend_126d}
+
 
 def compute_macro_regime(px: pd.DataFrame, thresholds: dict, weights: dict) -> MacroRegime:
     details: Dict[str, float] = {}
