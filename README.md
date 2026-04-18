@@ -409,6 +409,15 @@ pytest -q
 python run_backtest.py
 ```
 
+### Run scoring comparative backtest
+```bash
+python run_compare_backtest.py
+```
+
+Optional flags:
+- `--output-dir output/comparative-alt`
+- `--include-kr`
+
 ## 9. APIs and dashboard visibility
 
 Useful API endpoints:
@@ -419,6 +428,9 @@ Useful API endpoints:
 - `/api/ack`
 - `/api/runtime`
 - `/api/backtest`
+
+Useful local comparison entrypoint:
+- `python run_compare_backtest.py` for baseline-vs-current scoring verification
 
 The dashboard is the recommended first interface for operators.
 
