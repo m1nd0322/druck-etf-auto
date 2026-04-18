@@ -132,6 +132,27 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
     if regime_factor_bias and not isinstance(regime_factor_bias, dict):
         raise ConfigError("config.selection.regime_factor_bias must be a mapping")
 
+    regime_factor_map = selection.get("regime_factor_map", {})
+    if regime_factor_map:
+        if not isinstance(regime_factor_map, dict):
+            raise ConfigError("config.selection.regime_factor_map must be a mapping")
+        enabled = regime_factor_map.get("enabled", False)
+        if not isinstance(enabled, bool):
+            raise ConfigError("config.selection.regime_factor_map.enabled must be boolean")
+        for regime_key in ["RISK_ON", "NEUTRAL", "RISK_OFF"]:
+            regime_cfg = regime_factor_map.get(regime_key, {})
+            if regime_cfg and not isinstance(regime_cfg, dict):
+                raise ConfigError(f"config.selection.regime_factor_map.{regime_key} must be a mapping")
+            if not regime_cfg:
+                continue
+            for list_key in ["overweight", "underweight"]:
+                values = regime_cfg.get(list_key, [])
+                if values and (not isinstance(values, list) or not all(isinstance(v, str) and v.strip() for v in values)):
+                    raise ConfigError(f"config.selection.regime_factor_map.{regime_key}.{list_key} must be a string list")
+            for number_key in ["bonus", "penalty", "min_count"]:
+                if number_key in regime_cfg and not isinstance(regime_cfg[number_key], (int, float)):
+                    raise ConfigError(f"config.selection.regime_factor_map.{regime_key}.{number_key} must be numeric")
+
     sleeve_budget = selection.get("sleeve_budget", {})
     if sleeve_budget and not isinstance(sleeve_budget, dict):
         raise ConfigError("config.selection.sleeve_budget must be a mapping")

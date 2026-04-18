@@ -2,7 +2,7 @@ from __future__ import annotations
 import pandas as pd
 from .data import make_universe, fetch_prices, get_date_range
 from .macro import compute_macro_regime, is_vix_spike
-from .portfolio import score_universe, allocate_weights, apply_risk_cuts, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation
+from .portfolio import score_universe, allocate_weights, apply_risk_cuts, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation, resolve_factor_preference
 from .report import save_report
 from .notifier import send_telegram
 from .runtime import StrategyHaltError
@@ -95,6 +95,7 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
 
     state = regime.state
     sleeve_map_all = build_sleeve_map(all_px.columns, cfg.get('universe', {}).get('us', {}))
+    factor_pref = resolve_factor_preference(cfg.get('selection', {}), state)
     scores = score_universe(
         all_px,
         cfg['selection']['score_weights'],
@@ -103,6 +104,7 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         sleeve_map=sleeve_map_all,
         benchmark_ticker=cfg.get('backtest', {}).get('benchmark_ticker', 'SPY'),
         relative_filter=cfg.get('selection', {}).get('benchmark_relative_filter', {}),
+        factor_pref=factor_pref,
     )
     if scores.empty:
         raise RuntimeError("Not enough history to score universe")

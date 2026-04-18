@@ -2,7 +2,7 @@ import math
 
 import pandas as pd
 
-from druck.portfolio import allocate_weights, apply_risk_cuts, score_universe, apply_regime_factor_bias, apply_sleeve_budget, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation
+from druck.portfolio import allocate_weights, apply_risk_cuts, score_universe, apply_regime_factor_bias, apply_sleeve_budget, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation, resolve_factor_preference, apply_regime_factor_map
 
 
 def test_allocate_weights_normalizes_and_caps():
@@ -54,6 +54,32 @@ def test_apply_regime_factor_bias_prefers_configured_factor_tickers():
     )
     biased = apply_regime_factor_bias(scores, "RISK_ON", {"RISK_ON": {"MTUM": 0.3}})
     assert biased.index[0] == "MTUM"
+
+
+def test_regime_factor_map_prefers_overweight_and_penalizes_underweight():
+    scores = pd.DataFrame(
+        {
+            "score": [1.0, 0.95, 0.94],
+        },
+        index=["SPY", "MTUM", "USMV"],
+    )
+    pref = resolve_factor_preference(
+        {
+            "regime_factor_map": {
+                "enabled": True,
+                "RISK_ON": {
+                    "overweight": ["MTUM"],
+                    "underweight": ["USMV"],
+                    "bonus": 0.2,
+                    "penalty": 0.1,
+                }
+            }
+        },
+        "RISK_ON",
+    )
+    adjusted = apply_regime_factor_map(scores, pref)
+    assert adjusted.index[0] == "MTUM"
+    assert adjusted.loc["USMV", "factor_map_bonus"] == -0.1
 
 
 def test_apply_sleeve_budget_caps_sleeve_totals():

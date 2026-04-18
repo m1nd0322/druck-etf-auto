@@ -9,7 +9,7 @@ import pandas as pd
 from .data import fetch_prices, get_date_range, make_universe
 from .engine import _detect_strategy_halt
 from .macro import compute_macro_regime, is_vix_spike
-from .portfolio import allocate_weights, apply_risk_cuts, score_universe, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation
+from .portfolio import allocate_weights, apply_risk_cuts, score_universe, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation, resolve_factor_preference
 
 
 @dataclass
@@ -178,6 +178,7 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     all_px = all_px[active_cols]
     state = regime.state
     sleeve_map_all = build_sleeve_map(all_px.columns, cfg.get("universe", {}).get("us", {}))
+    factor_pref = resolve_factor_preference(cfg.get("selection", {}), state)
     scores = score_universe(
         all_px,
         cfg["selection"]["score_weights"],
@@ -186,6 +187,7 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
         sleeve_map=sleeve_map_all,
         benchmark_ticker=cfg.get("backtest", {}).get("benchmark_ticker", "SPY"),
         relative_filter=cfg.get("selection", {}).get("benchmark_relative_filter", {}),
+        factor_pref=factor_pref,
     )
     if scores.empty:
         raise RuntimeError("Not enough history to score universe")

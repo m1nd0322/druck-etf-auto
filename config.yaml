@@ -97,6 +97,26 @@ selection:
     factor: 0.25
     sector: 0.35
     country: 0.25
+  regime_factor_map:
+    enabled: true
+    RISK_ON:
+      overweight: [MTUM, QUAL]
+      underweight: [USMV]
+      min_count: 1
+      bonus: 0.18
+      penalty: 0.08
+    NEUTRAL:
+      overweight: [QUAL, VLUE]
+      underweight: [SIZE]
+      min_count: 1
+      bonus: 0.10
+      penalty: 0.05
+    RISK_OFF:
+      overweight: [USMV, QUAL]
+      underweight: [MTUM, SIZE]
+      min_count: 1
+      bonus: 0.20
+      penalty: 0.10
   regime_sleeve_rotation:
     enabled: true
     RISK_ON:

@@ -24,6 +24,33 @@ def build_sleeve_map(tickers: list[str] | pd.Index, universe_cfg: dict | None) -
     return sleeve_map
 
 
+def resolve_factor_preference(selection_cfg: dict | None, regime_state: str) -> dict:
+    selection_cfg = selection_cfg or {}
+    factor_map = selection_cfg.get("regime_factor_map", {}) or {}
+    regime_cfg = factor_map.get(regime_state, {}) or {}
+    return {
+        "enabled": bool(factor_map.get("enabled", False)),
+        "overweight": list(regime_cfg.get("overweight", []) or []),
+        "underweight": list(regime_cfg.get("underweight", []) or []),
+        "min_count": int(regime_cfg.get("min_count", 0) or 0),
+        "bonus": float(regime_cfg.get("bonus", 0.0) or 0.0),
+        "penalty": float(regime_cfg.get("penalty", 0.0) or 0.0),
+    }
+
+
+def apply_regime_factor_map(scores: pd.DataFrame, factor_pref: dict | None) -> pd.DataFrame:
+    if scores.empty or not factor_pref or not factor_pref.get("enabled", False):
+        return scores
+    out = scores.copy()
+    overweight = set(factor_pref.get("overweight", []))
+    underweight = set(factor_pref.get("underweight", []))
+    bonus = float(factor_pref.get("bonus", 0.0))
+    penalty = float(factor_pref.get("penalty", 0.0))
+    out["factor_map_bonus"] = [bonus if t in overweight else (-penalty if t in underweight else 0.0) for t in out.index]
+    out["score"] = out["score"] + out["factor_map_bonus"]
+    return out.sort_values("score", ascending=False)
+
+
 def resolve_regime_rotation(selection_cfg: dict | None, regime_state: str, default_top_on: int, default_top_off: int) -> dict:
     selection_cfg = selection_cfg or {}
     rotation_cfg = selection_cfg.get("regime_sleeve_rotation", {}) or {}
@@ -85,7 +112,7 @@ def apply_regime_factor_bias(scores: pd.DataFrame, regime_state: str, regime_fac
     return out.sort_values('score', ascending=False)
 
 
-def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = None, regime_factor_map: dict | None = None, sleeve_map: dict[str, str] | None = None, benchmark_ticker: str | None = "SPY", relative_filter: dict | None = None) -> pd.DataFrame:
+def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = None, regime_factor_map: dict | None = None, sleeve_map: dict[str, str] | None = None, benchmark_ticker: str | None = "SPY", relative_filter: dict | None = None, factor_pref: dict | None = None) -> pd.DataFrame:
     rows=[]
     benchmark = prices[benchmark_ticker].dropna() if benchmark_ticker and benchmark_ticker in prices.columns else None
     relative_filter = relative_filter or {}
@@ -151,6 +178,7 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
     df = df.sort_values('score', ascending=False)
     if regime_state is not None:
         df = apply_regime_factor_bias(df, regime_state, regime_factor_map)
+    df = apply_regime_factor_map(df, factor_pref)
     return df
 
 def apply_sleeve_budget(weights: pd.Series, sleeve_map: dict[str, str] | None, sleeve_budget: dict[str, float] | None) -> pd.Series:
