@@ -163,6 +163,7 @@ def test_dashboard_template_contains_backtest_sections():
     assert "Selected Mix %" in result_partial
     assert "Preferred sleeves" in result_partial
     assert "Sleeve" in result_partial
+    assert "Sleeve Contribution Attribution" in text
 
 
 def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):

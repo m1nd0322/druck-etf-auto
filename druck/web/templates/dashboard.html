@@ -64,6 +64,20 @@
           <tbody id="backtest-score-comparison-body"></tbody>
         </table>
       </div>
+      <div id="backtest-sleeve-contribution" style="display:none; margin-top: .75rem;">
+        <h4>Sleeve Contribution Attribution</h4>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Sleeve</th>
+                <th>Contribution %</th>
+              </tr>
+            </thead>
+            <tbody id="backtest-sleeve-contribution-body"></tbody>
+          </table>
+        </div>
+      </div>
       <div id="backtest-pick-comparison" style="display:none; margin-top: .75rem;">
         <h4>Legacy vs Alpha Top Picks</h4>
         <div class="table-wrap">
@@ -403,6 +417,8 @@ async function runBacktest() {
   const robustnessSummaryBox = document.getElementById('backtest-robustness-summary');
   const pickComparisonBox = document.getElementById('backtest-pick-comparison');
   const pickComparisonBody = document.getElementById('backtest-pick-comparison-body');
+  const sleeveContributionBox = document.getElementById('backtest-sleeve-contribution');
+  const sleeveContributionBody = document.getElementById('backtest-sleeve-contribution-body');
   const scenarioBox = document.getElementById('backtest-scenarios');
   const scenarioTagBox = document.getElementById('backtest-scenario-tags');
   const scenarioBody = document.getElementById('backtest-scenarios-body');
@@ -483,6 +499,7 @@ async function runBacktest() {
 
     const legacyPicks = Array.isArray(scoreComparison.latest_legacy_top_picks) ? scoreComparison.latest_legacy_top_picks : [];
     const alphaPicks = Array.isArray(scoreComparison.latest_alpha_top_picks) ? scoreComparison.latest_alpha_top_picks : [];
+    const sleeveContribution = body.data.analytics && body.data.analytics.sleeve_contribution_attribution ? body.data.analytics.sleeve_contribution_attribution.latest_sleeve_contribution || {} : {};
     const maxRows = Math.max(legacyPicks.length, alphaPicks.length);
     if (maxRows > 0) {
       pickComparisonBox.style.display = 'block';
@@ -495,6 +512,19 @@ async function runBacktest() {
     } else {
       pickComparisonBox.style.display = 'none';
       pickComparisonBody.innerHTML = '';
+    }
+
+    if (Object.keys(sleeveContribution).length > 0) {
+      sleeveContributionBox.style.display = 'block';
+      sleeveContributionBody.innerHTML = Object.entries(sleeveContribution).map(([sleeve, value]) => `
+        <tr>
+          <td>${formatBacktestLabel(sleeve)}</td>
+          <td>${formatBacktestPercent(value, 2)}</td>
+        </tr>
+      `).join('');
+    } else {
+      sleeveContributionBox.style.display = 'none';
+      sleeveContributionBody.innerHTML = '';
     }
 
     if (body.data.scenario_summary && body.data.scenario_summary.length > 0) {

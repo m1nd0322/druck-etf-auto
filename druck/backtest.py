@@ -376,6 +376,10 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
         factor_selected = [ticker for ticker in selected.index if ticker in factor_universe]
         rotation_policy = selected.attrs.get("rotation_policy", {}) if hasattr(selected, "attrs") else {}
         selected_sleeves = selected.attrs.get("selected_sleeves", {}) if hasattr(selected, "attrs") else {}
+        sleeve_contribution = {}
+        for ticker, weight in current_weights.items():
+            sleeve = selected_sleeves.get(ticker, "core")
+            sleeve_contribution[sleeve] = sleeve_contribution.get(sleeve, 0.0) + float(weight)
         legacy_top = selected.sort_values('legacy_score', ascending=False).head(len(selected)).index.tolist() if not selected.empty and 'legacy_score' in selected.columns else []
         alpha_top = selected.sort_values('score', ascending=False).head(len(selected)).index.tolist() if not selected.empty else []
         overlap = len(set(legacy_top) & set(alpha_top))
@@ -413,6 +417,7 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
                 "rotation_preferred_sleeves": list(rotation_policy.get("preferred_sleeves", [])) if rotation_policy else [],
                 "rotation_sleeve_budget": dict(rotation_policy.get("sleeve_budget", {})) if rotation_policy else {},
                 "selected_sleeves": selected_sleeves,
+                "sleeve_contribution": sleeve_contribution,
                 "legacy_alpha_overlap": overlap,
                 "legacy_alpha_overlap_ratio": float(overlap / max(len(alpha_top), 1)) if alpha_top else 0.0,
                 "legacy_top_picks": legacy_top,
@@ -478,6 +483,8 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
                 "benchmark_relative_fail_count": int(latest_row.get("benchmark_relative_fail_count", 0)),
             }
 
+    latest_sleeve_contribution = rebalance_log.iloc[-1]['sleeve_contribution'] if not rebalance_log.empty and 'sleeve_contribution' in rebalance_log.columns else {}
+
     analytics = {
         "worst_day": float(daily_returns_series.min()) if not daily_returns_series.empty else 0.0,
         "best_day": float(daily_returns_series.max()) if not daily_returns_series.empty else 0.0,
@@ -486,6 +493,9 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
         "factor_regime_attribution": factor_regime,
         "capacity_warning": capacity_warning,
         "sleeve_relative_warning": sleeve_relative_warning,
+        "sleeve_contribution_attribution": {
+            "latest_sleeve_contribution": latest_sleeve_contribution,
+        },
         "selection_score_comparison": {
             "avg_score_uplift": float(rebalance_log['selected_avg_score_uplift'].mean()) if not rebalance_log.empty and 'selected_avg_score_uplift' in rebalance_log.columns else 0.0,
             "avg_persistence": float(rebalance_log['selected_avg_persistence'].mean()) if not rebalance_log.empty and 'selected_avg_persistence' in rebalance_log.columns else 0.0,

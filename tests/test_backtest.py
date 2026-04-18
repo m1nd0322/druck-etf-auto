@@ -110,6 +110,8 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert "latest_legacy_top_picks" in result.analytics["selection_score_comparison"]
     assert "latest_alpha_top_picks" in result.analytics["selection_score_comparison"]
     assert "strategy_comparison" in result.analytics
+    assert "sleeve_contribution_attribution" in result.analytics
+    assert "latest_sleeve_contribution" in result.analytics["sleeve_contribution_attribution"]
     assert "return_delta" in result.analytics["strategy_comparison"]
     assert "active_return_delta" in result.analytics["strategy_comparison"]
     assert "scenario_robustness_deltas" in result.analytics["strategy_comparison"]
