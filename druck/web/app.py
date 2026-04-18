@@ -129,6 +129,11 @@ def _format_regime_result(result: dict) -> dict:
             row["trend"] = round(float(s.get("trend", 0)), 4)
             row["vol"] = round(float(s.get("vol", 0)), 4)
             row["mdd"] = round(float(s.get("mdd_1y", 0)), 4)
+            row["relative_strength"] = round(float(s.get("relative_strength_6m", 0)), 4)
+            row["capacity_score"] = round(float(s.get("capacity_score", 0)), 4)
+            row["diversification_score"] = round(float(s.get("diversification_score", 0)), 4)
+            row["diversification_penalty"] = round(float(s.get("diversification_penalty", 0)), 4)
+            row["residual_strength"] = round(float(s.get("residual_strength", 0)), 4)
         etfs.append(row)
     etfs.sort(key=lambda x: x["weight"], reverse=True)
 
@@ -177,11 +182,24 @@ def _format_regime_result(result: dict) -> dict:
         sleeve_mix[sleeve] = sleeve_mix.get(sleeve, 0.0) + w
     sleeve_mix = {k: round(v * 100, 2) for k, v in sorted(sleeve_mix.items(), key=lambda item: item[1], reverse=True)}
 
+    score_diagnostics = {}
+    if not scores.empty:
+        selected_scores = scores.loc[[ticker for ticker in weights.index if ticker in scores.index]].copy()
+        if not selected_scores.empty:
+            score_diagnostics = {
+                "avg_relative_strength": round(float(selected_scores.get("relative_strength_6m", pd.Series(dtype=float)).mean()), 4) if "relative_strength_6m" in selected_scores.columns else 0.0,
+                "avg_capacity_score": round(float(selected_scores.get("capacity_score", pd.Series(dtype=float)).mean()), 4) if "capacity_score" in selected_scores.columns else 0.0,
+                "avg_diversification_score": round(float(selected_scores.get("diversification_score", pd.Series(dtype=float)).mean()), 4) if "diversification_score" in selected_scores.columns else 0.0,
+                "avg_diversification_penalty": round(float(selected_scores.get("diversification_penalty", pd.Series(dtype=float)).mean()), 4) if "diversification_penalty" in selected_scores.columns else 0.0,
+                "avg_residual_strength": round(float(selected_scores.get("residual_strength", pd.Series(dtype=float)).mean()), 4) if "residual_strength" in selected_scores.columns else 0.0,
+            }
+
     return {
         "state": regime.state,
         "risk_score": round(regime.risk_score, 4),
         "details": details,
         "etfs": etfs,
+        "score_diagnostics": score_diagnostics,
         "report_path": result.get("report_path", ""),
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "trade_plan": trade_summary,

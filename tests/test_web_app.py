@@ -78,7 +78,7 @@ def test_backtest_api_returns_scenarios_and_analytics(tmp_path, monkeypatch):
         analytics = {
             "capacity_warning": {"status": "warning", "message": "too large"},
             "sleeve_relative_warning": {"status": "warning", "message": "weak sleeve strength", "weak_sleeves": ["factor"], "avg_relative_strength": -0.03, "benchmark_relative_fail_count": 2},
-            "selection_score_comparison": {"avg_score_uplift": 0.12, "avg_persistence": 0.55},
+            "selection_score_comparison": {"avg_score_uplift": 0.12, "avg_persistence": 0.55, "avg_capacity_score": 0.89, "avg_diversification_score": 0.51, "avg_diversification_penalty": 0.01, "avg_residual_strength": 0.0, "latest_preferred_factors": ["QUAL"], "latest_selected_preferred_factors": ["QUAL"], "rates_direction_counts": {"neutral": 3}, "latest_rotation_preferred_sleeves": ["factor"], "latest_rotation_sleeve_budget": {"factor": 0.7}, "latest_selected_sleeves": {"QUAL": "factor"}},
             "strategy_comparison": {
                 "robustness_summary": "enhanced wins 2, loses 1 across shared scenarios",
                 "return_delta": 0.04,
@@ -113,6 +113,11 @@ def test_format_regime_result_includes_rotation_policy_and_sleeve_mix():
                 "trend": [1.0, 0.8],
                 "vol": [0.1, 0.2],
                 "mdd_1y": [-0.05, -0.08],
+                "relative_strength_6m": [0.05, 0.01],
+                "capacity_score": [0.9, 0.8],
+                "diversification_score": [0.4, 0.3],
+                "diversification_penalty": [0.01, 0.02],
+                "residual_strength": [0.02, -0.01],
             },
             index=["MTUM", "SPY"],
         ),
@@ -135,7 +140,9 @@ def test_format_regime_result_includes_rotation_policy_and_sleeve_mix():
     assert body["rotation_policy"]["top_n"] == 2
     assert body["selected_sleeves"]["MTUM"] == "factor"
     assert body["selected_sleeve_mix"]["factor"] == 60.0
+    assert body["score_diagnostics"]["avg_capacity_score"] > 0
     assert body["etfs"][0]["sleeve"] in {"factor", "core"}
+    assert "capacity_score" in body["etfs"][0]
 
 
 def test_dashboard_template_contains_backtest_sections():
@@ -162,8 +169,12 @@ def test_dashboard_template_contains_backtest_sections():
     assert "Regime Sleeve Rotation" in result_partial
     assert "Selected Mix %" in result_partial
     assert "Preferred sleeves" in result_partial
+    assert "Score Diagnostics" in result_partial
+    assert "Rel Str" in result_partial
+    assert "Residual" in result_partial
     assert "Sleeve" in result_partial
     assert "Sleeve Contribution Attribution" in text
+    assert "Factor Rotation Diagnostics" in text
 
 
 def test_status_api_surfaces_backtest_capacity_warning(tmp_path, monkeypatch):

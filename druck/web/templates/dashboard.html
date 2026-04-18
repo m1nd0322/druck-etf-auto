@@ -78,6 +78,14 @@
           </table>
         </div>
       </div>
+      <div id="backtest-factor-rotation" style="display:none; margin-top: .75rem;">
+        <h4>Factor Rotation Diagnostics</h4>
+        <div class="table-wrap">
+          <table>
+            <tbody id="backtest-factor-rotation-body"></tbody>
+          </table>
+        </div>
+      </div>
       <div id="backtest-pick-comparison" style="display:none; margin-top: .75rem;">
         <h4>Legacy vs Alpha Top Picks</h4>
         <div class="table-wrap">
@@ -415,6 +423,8 @@ async function runBacktest() {
   const scoreComparisonBox = document.getElementById('backtest-score-comparison');
   const scoreComparisonBody = document.getElementById('backtest-score-comparison-body');
   const robustnessSummaryBox = document.getElementById('backtest-robustness-summary');
+  const factorRotationBox = document.getElementById('backtest-factor-rotation');
+  const factorRotationBody = document.getElementById('backtest-factor-rotation-body');
   const pickComparisonBox = document.getElementById('backtest-pick-comparison');
   const pickComparisonBody = document.getElementById('backtest-pick-comparison-body');
   const sleeveContributionBox = document.getElementById('backtest-sleeve-contribution');
@@ -483,7 +493,7 @@ async function runBacktest() {
 
     const scoreComparison = body.data.analytics && body.data.analytics.selection_score_comparison ? body.data.analytics.selection_score_comparison : {};
     const strategyComparison = body.data.analytics && body.data.analytics.strategy_comparison ? body.data.analytics.strategy_comparison : {};
-    const simpleScoreComparison = Object.fromEntries(Object.entries(scoreComparison).filter(([key]) => !['latest_legacy_top_picks', 'latest_alpha_top_picks'].includes(key)));
+    const simpleScoreComparison = Object.fromEntries(Object.entries(scoreComparison).filter(([key]) => !['latest_legacy_top_picks', 'latest_alpha_top_picks'].includes(key) && !Array.isArray(value = scoreComparison[key]) && typeof scoreComparison[key] !== 'object'));
     scoreComparisonBody.innerHTML = Object.entries(simpleScoreComparison).map(([key, value]) => {
       const rendered = typeof value === 'number' ? formatBacktestNumber(value, 4) : value;
       return `<tr><th>${formatBacktestLabel(key)}</th><td>${rendered}</td></tr>`;
@@ -500,7 +510,23 @@ async function runBacktest() {
     const legacyPicks = Array.isArray(scoreComparison.latest_legacy_top_picks) ? scoreComparison.latest_legacy_top_picks : [];
     const alphaPicks = Array.isArray(scoreComparison.latest_alpha_top_picks) ? scoreComparison.latest_alpha_top_picks : [];
     const sleeveContribution = body.data.analytics && body.data.analytics.sleeve_contribution_attribution ? body.data.analytics.sleeve_contribution_attribution.latest_sleeve_contribution || {} : {};
+    const factorRotationRows = [
+      ['Latest Preferred Factors', Array.isArray(scoreComparison.latest_preferred_factors) ? scoreComparison.latest_preferred_factors.join(', ') : ''],
+      ['Latest Selected Preferred Factors', Array.isArray(scoreComparison.latest_selected_preferred_factors) ? scoreComparison.latest_selected_preferred_factors.join(', ') : ''],
+      ['Rates Direction Counts', scoreComparison.rates_direction_counts ? JSON.stringify(scoreComparison.rates_direction_counts) : ''],
+      ['Latest Rotation Preferred Sleeves', Array.isArray(scoreComparison.latest_rotation_preferred_sleeves) ? scoreComparison.latest_rotation_preferred_sleeves.join(', ') : ''],
+      ['Latest Rotation Sleeve Budget', scoreComparison.latest_rotation_sleeve_budget ? JSON.stringify(scoreComparison.latest_rotation_sleeve_budget) : ''],
+      ['Latest Selected Sleeves', scoreComparison.latest_selected_sleeves ? JSON.stringify(scoreComparison.latest_selected_sleeves) : ''],
+    ].filter(([, value]) => value);
     const maxRows = Math.max(legacyPicks.length, alphaPicks.length);
+    if (factorRotationRows.length > 0) {
+      factorRotationBox.style.display = 'block';
+      factorRotationBody.innerHTML = factorRotationRows.map(([label, value]) => `<tr><th>${label}</th><td>${value}</td></tr>`).join('');
+    } else {
+      factorRotationBox.style.display = 'none';
+      factorRotationBody.innerHTML = '';
+    }
+
     if (maxRows > 0) {
       pickComparisonBox.style.display = 'block';
       pickComparisonBody.innerHTML = Array.from({ length: maxRows }).map((_, i) => `

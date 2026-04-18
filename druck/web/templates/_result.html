@@ -173,6 +173,24 @@
 </section>
 {% endif %}
 
+{% if latest.score_diagnostics %}
+<section class="section">
+  <h2>Score Diagnostics</h2>
+  <div class="table-wrap">
+    <table>
+      <tbody>
+        {% for key, value in latest.score_diagnostics.items() %}
+        <tr>
+          <th>{{ key.replace('_', ' ').title() }}</th>
+          <td>{{ "%.4f"|format(value) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 <section class="section">
   <h2>Selected ETFs</h2>
   <div class="table-wrap">
@@ -185,6 +203,11 @@
           <th>Score</th>
           <th>Momentum</th>
           <th>Trend</th>
+          <th class="hide-mobile">Rel Str</th>
+          <th class="hide-mobile">Capacity</th>
+          <th class="hide-mobile">Div Score</th>
+          <th class="hide-mobile">Div Penalty</th>
+          <th class="hide-mobile">Residual</th>
           <th class="hide-mobile">Vol</th>
           <th class="hide-mobile">MDD</th>
         </tr>
@@ -202,6 +225,11 @@
             {{ "%.2f%%"|format(etf.get('momentum', 0) * 100) }}
           </td>
           <td>{{ "%.2f"|format(etf.get('trend', 0)) }}</td>
+          <td class="hide-mobile">{{ "%.4f"|format(etf.get('relative_strength', 0)) }}</td>
+          <td class="hide-mobile">{{ "%.4f"|format(etf.get('capacity_score', 0)) }}</td>
+          <td class="hide-mobile">{{ "%.4f"|format(etf.get('diversification_score', 0)) }}</td>
+          <td class="hide-mobile">{{ "%.4f"|format(etf.get('diversification_penalty', 0)) }}</td>
+          <td class="hide-mobile">{{ "%.4f"|format(etf.get('residual_strength', 0)) }}</td>
           <td class="hide-mobile">{{ "%.1f%%"|format(etf.get('vol', 0) * 100) }}</td>
           <td class="hide-mobile {% if etf.get('mdd', 0) < -0.15 %}negative{% endif %}">
             {{ "%.1f%%"|format(etf.get('mdd', 0) * 100) }}

@@ -21,6 +21,13 @@ def save_report(out_dir: str, selection: pd.DataFrame, regime_details: dict, cut
         lines.append("## Risk Cuts")
         lines.append(cuts.to_markdown(index=False))
         lines.append("")
+    score_cols = [c for c in ["score", "relative_strength_6m", "capacity_score", "diversification_score", "diversification_penalty", "residual_strength"] if c in selection.columns]
+    if score_cols:
+        lines.append("## Score Diagnostics")
+        diagnostics = selection[score_cols].mean(numeric_only=True).to_dict()
+        for k, v in diagnostics.items():
+            lines.append(f"- {k}: {v:.6f}")
+        lines.append("")
     lines.append("## Selected ETFs")
     lines.append(selection.to_markdown())
     lines.append("")
