@@ -131,16 +131,22 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
     )
     df['score_uplift'] = df['score'] - df['legacy_score']
 
-    threshold = relative_filter.get('min_relative_strength_6m') if relative_filter else None
+    threshold = relative_filter.get('min_relative_strength_6m') if relative_filter and relative_filter.get('enabled', False) else None
     if threshold is not None:
         penalty = float(relative_filter.get('penalty', 0.0))
+        mode = str(relative_filter.get('mode', 'penalty')).strip().lower() or 'penalty'
         enabled_sleeves = set(relative_filter.get('apply_to_sleeves', ['factor', 'sector', 'country']))
         mask = df['sleeve'].isin(enabled_sleeves) & (df['relative_strength_6m'].fillna(-999.0) < float(threshold))
         df['benchmark_relative_fail'] = mask
-        if penalty > 0:
+        df['benchmark_relative_excluded'] = False
+        if mode == 'exclude':
+            df.loc[mask, 'benchmark_relative_excluded'] = True
+            df = df.loc[~mask].copy()
+        elif penalty > 0:
             df.loc[mask, 'score'] = df.loc[mask, 'score'] - penalty
     else:
         df['benchmark_relative_fail'] = False
+        df['benchmark_relative_excluded'] = False
 
     df = df.sort_values('score', ascending=False)
     if regime_state is not None:

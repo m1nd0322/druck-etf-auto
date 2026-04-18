@@ -147,6 +147,10 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
             _require_number(benchmark_relative_filter, "min_relative_strength_6m", "config.selection.benchmark_relative_filter")
         if "penalty" in benchmark_relative_filter:
             _require_number(benchmark_relative_filter, "penalty", "config.selection.benchmark_relative_filter")
+        if "mode" in benchmark_relative_filter:
+            mode = str(benchmark_relative_filter.get("mode", "penalty"))
+            if mode not in {"penalty", "exclude"}:
+                raise ConfigError("config.selection.benchmark_relative_filter.mode must be one of: penalty, exclude")
         if "apply_to_sleeves" in benchmark_relative_filter:
             sleeves = benchmark_relative_filter.get("apply_to_sleeves")
             if not isinstance(sleeves, list) or not all(isinstance(v, str) and v.strip() for v in sleeves):

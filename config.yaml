@@ -88,6 +88,7 @@ selection:
     dd_penalty: 0.10
   benchmark_relative_filter:
     enabled: true
+    mode: penalty
     min_relative_strength_6m: -0.02
     penalty: 0.25
     apply_to_sleeves: [factor, sector, country]
