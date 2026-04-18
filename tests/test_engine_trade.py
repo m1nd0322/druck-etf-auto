@@ -170,6 +170,66 @@ def test_run_once_halts_trading_on_performance_degradation(monkeypatch):
         run_once(cfg, do_trade=True, broker=FakeBroker())
 
 
+def test_run_once_returns_provider_warning_summary(monkeypatch):
+    cfg = {
+        "mode": {"enable_kiwoom": False, "dry_run": True},
+        "data": {"lookback_years": 3, "price_provider": "auto", "cache_csv": True, "cache_dir": ".cache"},
+        "selection": {
+            "top_n_risk_on": 2,
+            "top_n_risk_off": 1,
+            "max_weight": 1.0,
+            "score_weights": {"momentum": 0.55, "trend": 0.25, "vol_penalty": 0.10, "dd_penalty": 0.10},
+            "regime_sleeve_rotation": {"enabled": False},
+        },
+        "macro_filter": {
+            "thresholds": {"risk_on_score_min": 0.55, "risk_off_score_max": 0.45},
+            "components": {"spy_trend_weight": 0.3, "usd_mom_weight": 0.15, "credit_weight": 0.2, "vix_weight": 0.2, "rates_weight": 0.15},
+        },
+        "risk_cut": {
+            "enabled": True,
+            "rules": {"below_200sma_cut": True, "trailing_dd_cut": -0.12, "hard_stop_cut": -0.18},
+            "action": {"cut_to_cash": True, "cash_us": "SHY", "cash_kr": "130730.KS"},
+        },
+        "rebalance": {"min_trade_weight_diff": 0.01, "round_shares": True},
+        "strategy_halt": {"enabled": False},
+    }
+
+    idx = pd.date_range("2024-01-01", periods=320, freq="D")
+    us_px = pd.DataFrame({
+        "SPY": pd.Series([100 + i * 0.4 for i in range(320)], index=idx),
+        "SHY": pd.Series([100.0] * 320, index=idx),
+        "UUP": pd.Series([100 - i * 0.02 for i in range(320)], index=idx),
+        "HYG": pd.Series([100 + i * 0.10 for i in range(320)], index=idx),
+        "IEF": pd.Series([100 + i * 0.03 for i in range(320)], index=idx),
+        "TLT": pd.Series([100 + i * 0.04 for i in range(320)], index=idx),
+        "^VIX": pd.Series([15 + (i % 3) * 0.1 for i in range(320)], index=idx),
+    })
+    us_px.attrs["provider_warning_summary"] = {
+        "status": "warning",
+        "summary": "provider rate-limit detected (XLV)",
+        "counts": {"rate_limit": 1},
+        "tickers": {"rate_limit": ["XLV"]},
+        "messages": ["provider rate-limit detected (XLV)"],
+        "issues": [],
+    }
+    kr_px = pd.DataFrame(index=idx)
+
+    monkeypatch.setattr("druck.engine.make_universe", lambda cfg: type("U", (), {"kr": [], "us": ["SPY", "SHY", "UUP", "HYG", "IEF", "TLT", "^VIX"]})())
+
+    def fake_fetch_prices(tickers, start, end, prefer='auto', cache_dir=None, use_cache=True):
+        if prefer == 'yf':
+            return us_px[tickers]
+        return kr_px
+
+    monkeypatch.setattr("druck.engine.fetch_prices", fake_fetch_prices)
+    monkeypatch.setattr("druck.engine.save_report", lambda out_dir, selection, regime_details, cuts: "output/report_test.md")
+    monkeypatch.setattr("druck.engine.send_telegram", lambda cfg, msg: None)
+
+    result = run_once(cfg, do_trade=False)
+    assert result["provider_warnings"][0]["scope"] == "us"
+    assert result["provider_warnings"][0]["summary"] == "provider rate-limit detected (XLV)"
+
+
 def test_run_once_halts_on_benchmark_underperformance(monkeypatch):
     cfg = {
         "mode": {"enable_kiwoom": True, "dry_run": False},

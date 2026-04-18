@@ -134,6 +134,17 @@ def test_format_regime_result_includes_rotation_policy_and_sleeve_mix():
             "score_tilt": {"factor": 0.2},
         },
         "selected_sleeves": {"MTUM": "factor", "SPY": "core"},
+        "provider_warnings": [
+            {
+                "scope": "us",
+                "status": "warning",
+                "summary": "provider rate-limit detected (XLV)",
+                "counts": {"rate_limit": 1},
+                "tickers": {"rate_limit": ["XLV"]},
+                "messages": ["provider rate-limit detected (XLV)"],
+                "issues": [],
+            }
+        ],
     }
     body = _format_regime_result(result)
     assert body["rotation_policy"]["enabled"] is True
@@ -143,6 +154,7 @@ def test_format_regime_result_includes_rotation_policy_and_sleeve_mix():
     assert body["score_diagnostics"]["avg_capacity_score"] > 0
     assert body["etfs"][0]["sleeve"] in {"factor", "core"}
     assert "capacity_score" in body["etfs"][0]
+    assert body["provider_warnings"][0]["summary"] == "provider rate-limit detected (XLV)"
 
 
 def test_dashboard_template_contains_backtest_sections():

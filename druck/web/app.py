@@ -115,6 +115,7 @@ def _format_regime_result(result: dict) -> dict:
 
     rotation_policy = result.get("rotation_policy") or {}
     selected_sleeves = result.get("selected_sleeves") or {}
+    provider_warnings = result.get("provider_warnings") or []
 
     etfs = []
     for ticker in weights.index:
@@ -216,6 +217,7 @@ def _format_regime_result(result: dict) -> dict:
         },
         "selected_sleeves": selected_sleeves,
         "selected_sleeve_mix": sleeve_mix,
+        "provider_warnings": provider_warnings,
     }
 
 

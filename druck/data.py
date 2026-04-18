@@ -1,10 +1,11 @@
 from __future__ import annotations
 import hashlib
 import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 import pandas as pd
 
 # 공유 시장 데이터 로더
@@ -25,6 +26,15 @@ class Universe:
     us_factor: List[str] | None = None
     us_sector: List[str] | None = None
     us_country: List[str] | None = None
+
+
+@dataclass
+class ProviderIssue:
+    provider: str
+    category: str
+    detail: str
+    tickers: list[str] | None = None
+
 
 def _ensure_dir(p: str):
     os.makedirs(p, exist_ok=True)
@@ -115,6 +125,63 @@ def fetch_prices_fdr(tickers: List[str], start: str, end: str) -> pd.DataFrame:
         return pd.DataFrame()
     return pd.DataFrame(out).dropna(how='all')
 
+def _classify_provider_issue(detail: str) -> str:
+    text = (detail or "").lower()
+    if any(token in text for token in ["rate limit", "ratelimit", "too many requests", "yf ratelimiterror", "429"]):
+        return "rate_limit"
+    if any(token in text for token in ["failed download", "possibly delisted", "no data found", "not found", "invalid", "missing"]):
+        return "invalid_symbol"
+    return "provider_error"
+
+
+def _extract_issue_tickers(detail: str) -> list[str]:
+    if not detail:
+        return []
+    matches = re.findall(r"'([A-Z0-9^._-]+)'", detail)
+    return list(dict.fromkeys(matches))
+
+
+def _summarize_provider_issues(issues: list[ProviderIssue]) -> dict[str, Any]:
+    if not issues:
+        return {}
+    counts: dict[str, int] = {}
+    tickers_by_category: dict[str, list[str]] = {}
+    messages: list[str] = []
+    for issue in issues:
+        counts[issue.category] = counts.get(issue.category, 0) + 1
+        bucket = tickers_by_category.setdefault(issue.category, [])
+        for ticker in issue.tickers or []:
+            if ticker not in bucket:
+                bucket.append(ticker)
+    if counts.get("rate_limit"):
+        affected = ", ".join(tickers_by_category.get("rate_limit", [])[:5])
+        suffix = f" ({affected})" if affected else ""
+        messages.append(f"provider rate-limit detected{suffix}")
+    if counts.get("invalid_symbol"):
+        affected = ", ".join(tickers_by_category.get("invalid_symbol", [])[:5])
+        suffix = f" ({affected})" if affected else ""
+        messages.append(f"provider invalid/missing symbol noise detected{suffix}")
+    if counts.get("provider_error"):
+        messages.append(f"provider errors detected ({counts['provider_error']})")
+    return {
+        "status": "warning",
+        "issue_count": len(issues),
+        "counts": counts,
+        "tickers": tickers_by_category,
+        "messages": messages,
+        "summary": "; ".join(messages),
+        "issues": [
+            {
+                "provider": issue.provider,
+                "category": issue.category,
+                "detail": issue.detail,
+                "tickers": issue.tickers or [],
+            }
+            for issue in issues
+        ],
+    }
+
+
 def fetch_prices(tickers: List[str], start: str, end: str, prefer: str='auto', cache_dir: Optional[str]=None, use_cache: bool=True) -> pd.DataFrame:
     tickers=[t for t in tickers if t]
     if not tickers:
@@ -132,6 +199,7 @@ def fetch_prices(tickers: List[str], start: str, end: str, prefer: str='auto', c
     # 공유 Parquet 데이터에서 먼저 시도 (부분 히트 지원)
     shared_df = pd.DataFrame()
     missing_tickers = list(tickers)
+    provider_issues: list[ProviderIssue] = []
     if _HAS_SHARED_DATA:
         try:
             shared = load_tickers(tickers, start, end)
@@ -141,19 +209,30 @@ def fetch_prices(tickers: List[str], start: str, end: str, prefer: str='auto', c
                     shared_df = shared['Close'][found].sort_index().dropna(how='all')
                     missing_tickers = [t for t in tickers if t not in found]
         except Exception as exc:
+            provider_issues.append(ProviderIssue(provider="shared", category="provider_error", detail=str(exc), tickers=missing_tickers.copy()))
             print(f"[data] shared data load failed, falling back to providers: {exc}")
     elif _SHARED_DATA_IMPORT_ERROR is not None:
+        provider_issues.append(ProviderIssue(provider="shared", category="provider_error", detail=str(_SHARED_DATA_IMPORT_ERROR), tickers=missing_tickers.copy()))
         print(f"[data] shared data loader unavailable, falling back to providers: {_SHARED_DATA_IMPORT_ERROR}")
     # 공유 데이터에 없는 티커만 다운로드
     dfs=[]
     if missing_tickers:
         if prefer in ('yf','auto'):
-            try: dfs.append(fetch_prices_yf(missing_tickers,start,end))
-            except Exception: pass
+            try:
+                dfs.append(fetch_prices_yf(missing_tickers,start,end))
+            except Exception as exc:
+                detail = str(exc)
+                provider_issues.append(ProviderIssue(provider="yfinance", category=_classify_provider_issue(detail), detail=detail, tickers=_extract_issue_tickers(detail) or missing_tickers.copy()))
         if prefer in ('fdr','auto'):
-            try: dfs.append(fetch_prices_fdr(missing_tickers,start,end))
-            except Exception: pass
+            try:
+                dfs.append(fetch_prices_fdr(missing_tickers,start,end))
+            except Exception as exc:
+                detail = str(exc)
+                provider_issues.append(ProviderIssue(provider="fdr", category=_classify_provider_issue(detail), detail=detail, tickers=_extract_issue_tickers(detail) or missing_tickers.copy()))
     if not dfs and shared_df.empty:
+        summary = _summarize_provider_issues(provider_issues)
+        if summary.get("summary"):
+            raise RuntimeError(f"No data provider worked. {summary['summary']}")
         raise RuntimeError('No data provider worked.')
     df = shared_df
     for d in dfs:
@@ -165,6 +244,10 @@ def fetch_prices(tickers: List[str], start: str, end: str, prefer: str='auto', c
     if cache_path:
         try: df.to_csv(cache_path)
         except Exception: pass
+    try:
+        df.attrs["provider_warning_summary"] = _summarize_provider_issues(provider_issues)
+    except Exception:
+        pass
     return df
 
 def get_date_range(lookback_years: int) -> Tuple[str,str]:

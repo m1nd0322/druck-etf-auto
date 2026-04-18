@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from druck.data import _cache_key, fetch_prices, make_universe, generate_kr_etf_universe
+from druck.data import _cache_key, fetch_prices, make_universe, generate_kr_etf_universe, _summarize_provider_issues, ProviderIssue
 
 
 def test_cache_key_is_stable():
@@ -146,3 +146,39 @@ def test_generate_kr_etf_universe_falls_back_to_pykrx_and_preserves_white_black_
     tickers = generate_kr_etf_universe(whitelist=["069500.KS", "999999.KS"], blacklist=["114800.KS"])
     assert "114800.KS" not in tickers
     assert tickers == ["069500.KS", "999999.KS"]
+
+
+def test_summarize_provider_issues_groups_rate_limit_and_invalid_symbol_noise():
+    summary = _summarize_provider_issues(
+        [
+            ProviderIssue(provider="yfinance", category="rate_limit", detail="YFRateLimitError('Too Many Requests')", tickers=["XLV"]),
+            ProviderIssue(provider="yfinance", category="invalid_symbol", detail="1 Failed download: ['FAKE']", tickers=["FAKE"]),
+        ]
+    )
+    assert summary["status"] == "warning"
+    assert summary["counts"]["rate_limit"] == 1
+    assert summary["counts"]["invalid_symbol"] == 1
+    assert "provider rate-limit detected" in summary["summary"]
+    assert "provider invalid/missing symbol noise detected" in summary["summary"]
+    assert summary["tickers"]["rate_limit"] == ["XLV"]
+    assert summary["tickers"]["invalid_symbol"] == ["FAKE"]
+
+
+def test_fetch_prices_attaches_provider_warning_summary(monkeypatch, tmp_path):
+    idx = pd.to_datetime(["2024-01-01", "2024-01-02"])
+    fdr_close = pd.DataFrame({"SPY": [300.0, 301.0]}, index=idx)
+
+    monkeypatch.setattr("druck.data._HAS_SHARED_DATA", False)
+    monkeypatch.setattr("druck.data._SHARED_DATA_IMPORT_ERROR", None)
+    monkeypatch.setattr(
+        "druck.data.fetch_prices_yf",
+        lambda tickers, start, end: (_ for _ in ()).throw(RuntimeError("1 Failed download: ['SPY']: YFRateLimitError('Too Many Requests')")),
+    )
+    monkeypatch.setattr("druck.data.fetch_prices_fdr", lambda tickers, start, end: fdr_close)
+
+    result = fetch_prices(["SPY"], "2024-01-01", "2024-01-03", prefer="auto", cache_dir=str(tmp_path), use_cache=False)
+    summary = result.attrs.get("provider_warning_summary", {})
+    assert summary["status"] == "warning"
+    assert summary["counts"]["rate_limit"] == 1
+    assert summary["tickers"]["rate_limit"] == ["SPY"]
+    assert "provider rate-limit detected" in summary["summary"]

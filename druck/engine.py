@@ -85,6 +85,12 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
     kr_px = fetch_prices(u.kr, start, end, prefer=prefer, cache_dir=cache_dir, use_cache=use_cache)
     us_px = fetch_prices(u.us, start, end, prefer='yf', cache_dir=cache_dir, use_cache=use_cache)
 
+    provider_warnings = []
+    for provider_name, frame in (("kr", kr_px), ("us", us_px)):
+        summary = getattr(frame, "attrs", {}).get("provider_warning_summary", {}) if frame is not None else {}
+        if summary:
+            provider_warnings.append({"scope": provider_name, **summary})
+
     regime = compute_macro_regime(us_px, cfg['macro_filter']['thresholds'], cfg['macro_filter']['components'])
 
     if is_vix_spike(us_px):
@@ -180,4 +186,5 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         'halt_detail': halt_detail,
         'rotation_policy': rotation,
         'selected_sleeves': {ticker: selected_sleeve_map.get(ticker, 'core') for ticker in selected.index},
+        'provider_warnings': provider_warnings,
     }
