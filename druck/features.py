@@ -90,6 +90,20 @@ def downside_efficiency(prices: pd.Series, lookback: int = 126) -> float:
     return float(total_return / penalty)
 
 
+def capacity_penalty_score(prices: pd.Series, lookback: int = 63) -> float:
+    if len(prices) < lookback + 1:
+        return float("nan")
+    r = prices.pct_change().dropna().iloc[-lookback:]
+    if r.empty:
+        return float("nan")
+    avg_abs_return = float(r.abs().mean())
+    vol = float(r.std())
+    if vol <= 0:
+        return 1.0
+    score = 1.0 / (1.0 + 10.0 * avg_abs_return + 5.0 * vol)
+    return float(score)
+
+
 def relative_strength_vs_benchmark(prices: pd.Series, benchmark: pd.Series, lookback: int = 126) -> float:
     if len(prices) < lookback + 1 or len(benchmark) < lookback + 1:
         return float("nan")

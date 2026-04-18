@@ -87,6 +87,7 @@ selection:
     recovery: 0.12
     downside_efficiency: 0.12
     relative_strength: 0.16
+    capacity_awareness: 0.08
     vol_penalty: 0.10
     dd_penalty: 0.10
   benchmark_relative_filter:

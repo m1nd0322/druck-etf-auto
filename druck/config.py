@@ -126,6 +126,8 @@ def validate_config(cfg: dict[str, Any]) -> AppConfig:
     score_weights = _require_dict(selection, "score_weights", "config.selection")
     for key in ["momentum", "trend", "vol_penalty", "dd_penalty"]:
         _require_number(score_weights, key, "config.selection.score_weights")
+    if "capacity_awareness" in score_weights:
+        _require_number(score_weights, "capacity_awareness", "config.selection.score_weights")
     _validate_weights_sum(score_weights, "config.selection.score_weights")
 
     regime_factor_bias = selection.get("regime_factor_bias", {})

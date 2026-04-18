@@ -2,7 +2,7 @@ import math
 
 import pandas as pd
 
-from druck.features import pct_change_n, rolling_vol, sma, trailing_drawdown, momentum_score, persistence_score, recovery_score, downside_efficiency, relative_strength_vs_benchmark
+from druck.features import pct_change_n, rolling_vol, sma, trailing_drawdown, momentum_score, persistence_score, recovery_score, downside_efficiency, relative_strength_vs_benchmark, capacity_penalty_score
 
 
 def test_sma_returns_last_window_average():
@@ -52,3 +52,9 @@ def test_relative_strength_vs_benchmark_positive_when_asset_outperforms():
     asset = pd.Series([100 + i * 1.0 for i in range(200)])
     benchmark = pd.Series([100 + i * 0.5 for i in range(200)])
     assert relative_strength_vs_benchmark(asset, benchmark, 126) > 0
+
+
+def test_capacity_penalty_score_prefers_smoother_series():
+    smooth = pd.Series([100 + i * 0.2 for i in range(200)])
+    jumpy = pd.Series([100 + i * 0.2 + ((-1) ** i) * 3 for i in range(200)])
+    assert capacity_penalty_score(smooth, 63) > capacity_penalty_score(jumpy, 63)

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Tuple
 import numpy as np
 import pandas as pd
-from .features import momentum_score, trend_score, rolling_vol, max_drawdown, zscore, sma, trailing_drawdown, persistence_score, recovery_score, downside_efficiency, relative_strength_vs_benchmark
+from .features import momentum_score, trend_score, rolling_vol, max_drawdown, zscore, sma, trailing_drawdown, persistence_score, recovery_score, downside_efficiency, relative_strength_vs_benchmark, capacity_penalty_score
 
 
 def build_sleeve_map(tickers: list[str] | pd.Index, universe_cfg: dict | None) -> dict[str, str]:
@@ -162,6 +162,7 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
             'recovery': recovery_score(p, 126),
             'downside_efficiency': downside_efficiency(p, 126),
             'relative_strength_6m': rs_126,
+            'capacity_score': capacity_penalty_score(p, 63),
             'vol':rolling_vol(p,63),
             'mdd_1y':max_drawdown(p,252),
         })
@@ -176,6 +177,7 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
     df['vol_z']=zscore(df['vol'])
     df['dd_z']=zscore(df['mdd_1y'])
     df['rel_strength_z']=zscore(df['relative_strength_6m'].fillna(0.0))
+    df['capacity_z']=zscore(df['capacity_score'].fillna(0.0))
     df['legacy_score'] = _legacy_score(df, sw)
     df['score']=(
         float(sw['momentum'])*df['mom_z']
@@ -184,6 +186,7 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
         + float(sw.get('recovery', 0.15))*df['recovery_z']
         + float(sw.get('downside_efficiency', 0.15))*df['downside_z']
         + float(sw.get('relative_strength', 0.10))*df['rel_strength_z']
+        + float(sw.get('capacity_awareness', 0.0))*df['capacity_z']
         - float(sw['vol_penalty'])*df['vol_z']
         - float(sw['dd_penalty'])*df['dd_z']
     )
