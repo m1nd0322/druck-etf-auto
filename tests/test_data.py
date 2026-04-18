@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from druck.data import _cache_key, fetch_prices, make_universe
 
@@ -60,3 +61,31 @@ def test_fetch_prices_merges_shared_data_with_provider_fallback(monkeypatch, tmp
     assert list(result.columns) == ["SPY", "QQQ"]
     assert float(result.loc[idx[0], "SPY"]) == 100.0
     assert float(result.loc[idx[1], "QQQ"]) == 202.0
+
+
+def test_fetch_prices_falls_through_to_second_provider_when_first_provider_fails(monkeypatch, tmp_path):
+    idx = pd.to_datetime(["2024-01-01", "2024-01-02"])
+    fdr_close = pd.DataFrame({"SPY": [300.0, 301.0]}, index=idx)
+
+    monkeypatch.setattr("druck.data._HAS_SHARED_DATA", False)
+    monkeypatch.setattr("druck.data._SHARED_DATA_IMPORT_ERROR", None)
+
+    def fail_yf(tickers, start, end):
+        raise RuntimeError("yf failed")
+
+    monkeypatch.setattr("druck.data.fetch_prices_yf", fail_yf)
+    monkeypatch.setattr("druck.data.fetch_prices_fdr", lambda tickers, start, end: fdr_close)
+
+    result = fetch_prices(["SPY"], "2024-01-01", "2024-01-03", prefer="auto", cache_dir=str(tmp_path), use_cache=False)
+    assert list(result.columns) == ["SPY"]
+    assert float(result.loc[idx[1], "SPY"]) == 301.0
+
+
+def test_fetch_prices_raises_when_all_providers_fail(monkeypatch, tmp_path):
+    monkeypatch.setattr("druck.data._HAS_SHARED_DATA", False)
+    monkeypatch.setattr("druck.data._SHARED_DATA_IMPORT_ERROR", None)
+    monkeypatch.setattr("druck.data.fetch_prices_yf", lambda tickers, start, end: (_ for _ in ()).throw(RuntimeError("yf failed")))
+    monkeypatch.setattr("druck.data.fetch_prices_fdr", lambda tickers, start, end: (_ for _ in ()).throw(RuntimeError("fdr failed")))
+
+    with pytest.raises(RuntimeError, match="No data provider worked"):
+        fetch_prices(["SPY"], "2024-01-01", "2024-01-03", prefer="auto", cache_dir=str(tmp_path), use_cache=False)
