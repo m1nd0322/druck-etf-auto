@@ -9,6 +9,7 @@ import pandas as pd
 
 # 공유 시장 데이터 로더
 _SHARED_DATA_IMPORT_ERROR = None
+load_tickers = None
 sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), '../../data')))
 try:
     from load_market_data import load_tickers
@@ -158,6 +159,9 @@ def fetch_prices(tickers: List[str], start: str, end: str, prefer: str='auto', c
     for d in dfs:
         df = df.combine_first(d) if not df.empty else d
     df=df.sort_index().dropna(how='all')
+    ordered_cols = [t for t in tickers if t in df.columns]
+    if ordered_cols:
+        df = df.reindex(columns=ordered_cols)
     if cache_path:
         try: df.to_csv(cache_path)
         except Exception: pass

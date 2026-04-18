@@ -44,3 +44,19 @@ def test_make_universe_combines_factor_sector_and_country_sleeves():
     assert u.us_factor == ["MTUM", "QUAL"]
     assert u.us_sector == ["XLK", "XLF"]
     assert u.us_country == ["EEM", "EWJ"]
+
+
+def test_fetch_prices_merges_shared_data_with_provider_fallback(monkeypatch, tmp_path):
+    idx = pd.to_datetime(["2024-01-01", "2024-01-02"])
+    shared_close = pd.DataFrame({"SPY": [100.0, 101.0]}, index=idx)
+    fallback_close = pd.DataFrame({"QQQ": [200.0, 202.0]}, index=idx)
+
+    monkeypatch.setattr("druck.data._HAS_SHARED_DATA", True)
+    monkeypatch.setattr("druck.data.load_tickers", lambda tickers, start, end: {"Close": shared_close})
+    monkeypatch.setattr("druck.data.fetch_prices_yf", lambda tickers, start, end: fallback_close if tickers == ["QQQ"] else pd.DataFrame())
+    monkeypatch.setattr("druck.data.fetch_prices_fdr", lambda tickers, start, end: pd.DataFrame())
+
+    result = fetch_prices(["SPY", "QQQ"], "2024-01-01", "2024-01-03", prefer="auto", cache_dir=str(tmp_path), use_cache=False)
+    assert list(result.columns) == ["SPY", "QQQ"]
+    assert float(result.loc[idx[0], "SPY"]) == 100.0
+    assert float(result.loc[idx[1], "QQQ"]) == 202.0
