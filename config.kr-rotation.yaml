@@ -200,8 +200,8 @@ risk_cut:
   enabled: true
   rules:
     below_200sma_cut: true
-    trailing_dd_cut: -0.10
-    hard_stop_cut: -0.16
+    trailing_dd_cut: -0.12
+    hard_stop_cut: -0.18
   action:
     cut_to_cash: true
     cash_us: SHY
@@ -269,16 +269,16 @@ backtest:
 
 strategy_halt:
   enabled: true
-  max_cut_asset_ratio: 0.80
-  min_risk_score: 0.20
-  max_negative_momentum_assets: 2
+  max_cut_asset_ratio: 0.95
+  min_risk_score: 0.15
+  max_negative_momentum_assets: 3
   performance:
     enabled: true
-    min_average_score: -0.25
-    max_average_momentum: -0.18
-    recent_total_return: -0.22
+    min_average_score: -0.35
+    max_average_momentum: -0.30
+    recent_total_return: -0.28
     benchmark_ticker: 069500.KS
-    benchmark_relative_return: -0.10
+    benchmark_relative_return: -0.14
 
 schedule:
   timezone: "Asia/Seoul"

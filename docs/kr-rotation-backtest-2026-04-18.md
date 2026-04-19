@@ -103,7 +103,7 @@ Confirmed foundations across the tuning wave:
   - average turnover: `0.3375`
   - active return: `-0.6697466750`
 
-### 6) New adopted family: benchmark-aware dual momentum
+### 6) Benchmark-aware dual momentum family
 - changes:
   - disabled benchmark overlay weighting
   - switched KR strategy family to `dual_momentum`
@@ -119,7 +119,29 @@ Confirmed foundations across the tuning wave:
   - this variant beat the benchmark-plus overlay on the user’s acceptance gate, CAGR
   - it also slightly improved active return and max drawdown
   - tradeoff: Sharpe fell modestly and turnover rose meaningfully
-  - despite that tradeoff, this becomes the new preferred KR family under the CAGR-first rule
+
+### 7) New adopted family: risk-managed dual momentum
+- changes:
+  - kept the benchmark-aware `dual_momentum` family
+  - relaxed risk-cut and strategy-halt thresholds enough to reduce halt clustering during the weak `2024-09` to `2025-03` zone
+  - key changes:
+    - `trailing_dd_cut: -0.12`
+    - `hard_stop_cut: -0.18`
+    - `strategy_halt.max_cut_asset_ratio: 0.95`
+    - `strategy_halt.min_risk_score: 0.15`
+    - `strategy_halt.max_negative_momentum_assets: 3`
+    - softer performance-halt thresholds for average score / momentum / recent return / benchmark-relative return
+- result:
+  - CAGR: `0.7127905542`
+  - Sharpe: `1.9102608919`
+  - max drawdown: `-0.1970445693`
+  - average turnover: `0.6875`
+  - active return: `-0.0013000831`
+  - halt_count: `1`
+- interpretation:
+  - this variant dramatically reduced halt clustering while also improving CAGR, Sharpe, and benchmark-relative performance
+  - the remaining tradeoff is much higher turnover
+  - under the current user priority, this becomes the new adopted KR leader, with turnover reduction as the next immediate tuning target
 
 ### Comparison across tuned variants
 | variant | CAGR | Sharpe | MDD | turnover | active return |
@@ -129,32 +151,49 @@ Confirmed foundations across the tuning wave:
 | core-purity / low-turnover variant | 17.93% | 1.136 | -13.78% | 0.4459 | -1.5624 |
 | previous preferred `kr_satellite` variant | 24.34% | 1.388 | -13.78% | 0.3228 | -1.4048 |
 | benchmark-plus overlay variant | 50.93% | 1.722 | -19.94% | 0.3375 | -0.6697 |
-| new benchmark-aware dual momentum variant | 52.40% | 1.622 | -19.70% | 0.4167 | -0.6244 |
+| benchmark-aware dual momentum variant | 52.40% | 1.622 | -19.70% | 0.4167 | -0.6244 |
+| new risk-managed dual momentum variant | 71.28% | 1.910 | -19.70% | 0.6875 | -0.0013 |
 
 ## Current design conclusion
 ### What now looks correct
 - contamination/data noise is no longer the main KR problem
 - pure sleeve-level KR rotation was not enough to close the benchmark gap
-- benchmark-plus overlay was a real step forward, but a benchmark-aware dual momentum family performed slightly better on the user’s CAGR-first acceptance rule
+- benchmark-plus overlay was a real step forward, and benchmark-aware dual momentum improved on it
+- the stronger conclusion now is that the main remaining bottleneck was halt clustering, not raw alpha generation
 - the current adopted family is:
-  - benchmark-aware dual momentum with `069500.KS` included in the KR candidate set
+  - risk-managed benchmark-aware dual momentum with `069500.KS` included in the KR candidate set
   - attack leadership primarily expressed through `091160.KS`, `102960.KS`
   - satellite participation still showing up through `139230.KS`
   - defensive fallback remains available through `130730.KS`, `114260.KS`, `132030.KS`
 
-### Why dual momentum now leads
-The overlay family fixed chronic benchmark under-exposure by forcing a base holding. The dual-momentum family improved further by letting `069500.KS` compete directly with KR alpha sleeves instead of pre-allocating it:
+### Why risk-managed dual momentum now leads
+The overlay family fixed benchmark under-exposure. The plain dual-momentum family improved CAGR further. The risk-managed dual-momentum family then addressed the bigger path-quality issue revealed by walk-forward analysis: halt clustering in the weak middle regime.
 - keep benchmark awareness through `069500.KS`
-- require positive momentum / acceptable relative strength
-- allow the benchmark to remain held when it is still one of the strongest choices
-- avoid forcing benchmark weight when attack sleeves have clearer leadership
+- still allow KR leaders to outrank the benchmark
+- reduce excessive strategy halts during weak / transitional periods
+- preserve participation in the later strong trend regime where most of the alpha is realized
 
 ## Current recommendation
 The current best KR experimental direction is now:
-1. use the benchmark-aware dual momentum family as the lead KR design
+1. use the risk-managed dual momentum family as the lead KR design
 2. retain `069500.KS` as an explicit benchmark-aware candidate inside the KR selection set
 3. keep benchmark-relative controls on `kr_attack`
-4. if a next research wave is needed, compare this family against a more explicit risk-managed variant rather than returning to sleeve-only micro-tuning
+4. make turnover reduction the next immediate tuning target, rather than returning to older sleeve-only families
+
+## Stress-test and walk-forward interpretation for current dual momentum leader
+### What the walk-forward shape says
+- the strategy’s strongest payoff came in the later trend-following window from roughly `2025-06` onward
+- the weak zone was the earlier transition / weak-trend period from roughly `2024-09` through `2025-03`
+- halt accumulation rose from `1` to `6` during that weak zone and then stayed elevated
+- this means the current dual momentum family is not a smooth all-weather KR design yet
+- instead, it is a regime-sensitive design that wins by capturing strong upside phases after surviving a difficult mid-sample drawdown / halt cluster
+
+### Practical interpretation
+- the current edge is real, because later walk-forward windows improved sharply and ended with the strongest CAGR path in the KR test family so far
+- but the quality of the path still depends heavily on avoiding or shortening the weak halting zone
+- therefore the next two valid tuning directions are:
+  1. reduce unnecessary rotation / churn without killing the late-trend upside
+  2. reduce halt clustering in mid-regime deterioration periods
 
 ## Practical next step
-The next valid step is no longer to compare old sleeve variants. It is to refine or stress-test the dual momentum family, since it now edges out benchmark-plus overlay on CAGR.
+The next valid step is to keep this risk-managed KR family and reduce turnover without reintroducing the old halt clustering problem.

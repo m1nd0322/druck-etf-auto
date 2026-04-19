@@ -189,11 +189,17 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         benchmark_ticker = str(cfg.get('backtest', {}).get('benchmark_ticker', '069500.KS') or '')
         cash_ticker = str(cfg.get('risk_cut', {}).get('action', {}).get('cash_kr', '130730.KS') or '')
         dual_top_n = int(cfg.get('selection', {}).get('dual_momentum_top_n', 2) or 2)
+        min_lead = float(cfg.get('selection', {}).get('dual_momentum_min_lead', 0.0) or 0.0)
+        benchmark_floor = float(cfg.get('selection', {}).get('dual_momentum_benchmark_floor_weight', 0.0) or 0.0)
         eligible = rotated_scores.copy()
         if benchmark_ticker in eligible.index:
             eligible = eligible.loc[(eligible['momentum'].fillna(-999.0) >= 0.0)]
             eligible = eligible.loc[(eligible['relative_strength_6m'].fillna(-999.0) >= -0.02)]
-            selected = eligible.sort_values(['relative_strength_6m', 'momentum'], ascending=False).head(dual_top_n).copy()
+            ranked = eligible.sort_values(['relative_strength_6m', 'momentum'], ascending=False).copy()
+            if min_lead > 0 and len(ranked) > dual_top_n:
+                cutoff_score = float(ranked.iloc[max(dual_top_n - 1, 0)]['score'])
+                ranked = ranked.loc[(ranked['score'] - cutoff_score) >= -min_lead].sort_values(['relative_strength_6m', 'momentum'], ascending=False)
+            selected = ranked.head(dual_top_n).copy()
             selected_sleeve_map = build_sleeve_map(selected.index, sleeve_cfg)
             if selected.empty and cash_ticker:
                 w = pd.Series({cash_ticker: 1.0})
@@ -201,8 +207,8 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
                 dm_weights = pd.Series(dtype=float)
                 for ticker in selected.index:
                     dm_weights.loc[ticker] = 1.0 / max(len(selected.index), 1)
-                if benchmark_ticker not in dm_weights.index and benchmark_ticker in rotated_scores.index:
-                    dm_weights.loc[benchmark_ticker] = 0.5
+                if benchmark_floor > 0 and benchmark_ticker in rotated_scores.index and benchmark_ticker not in dm_weights.index:
+                    dm_weights.loc[benchmark_ticker] = benchmark_floor
                 total = float(dm_weights.sum())
                 w = dm_weights / total if total > 0 else dm_weights
     elif bool(overlay_cfg.get('enabled', False)):
