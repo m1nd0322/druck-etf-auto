@@ -83,6 +83,36 @@ def _detect_strategy_halt(cfg: dict, regime, selected: pd.DataFrame, final_w: pd
     return False, '', ''
 
 
+def _apply_budget_throttle(rotation: dict, risk_score: float) -> dict:
+    if not rotation:
+        return rotation
+    out = dict(rotation)
+    throttle_cfg = rotation.get('budget_throttle', {}) or {}
+    sleeves = throttle_cfg.get('sleeves', {}) or {}
+    if not sleeves:
+        out['budget_throttle_applied'] = False
+        return out
+    sleeve_budget = dict(rotation.get('sleeve_budget', {}) or {})
+    changed = False
+    for sleeve, rule in sleeves.items():
+        if not isinstance(rule, dict):
+            continue
+        threshold = rule.get('risk_score_below')
+        scale = rule.get('scale')
+        floor = rule.get('floor', 0.0)
+        if threshold is None or scale is None or sleeve not in sleeve_budget:
+            continue
+        if float(risk_score) < float(threshold):
+            sleeve_budget[sleeve] = max(float(floor), float(sleeve_budget[sleeve]) * float(scale))
+            changed = True
+    if changed:
+        out['sleeve_budget'] = sleeve_budget
+        out['budget_throttle_applied'] = True
+    else:
+        out['budget_throttle_applied'] = False
+    return out
+
+
 def run_once(cfg: dict, do_trade: bool=False, broker=None):
     if do_trade and broker is None:
         raise ValueError("broker is required when do_trade=True")
@@ -133,8 +163,13 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
     top_on = int(cfg['selection']['top_n_risk_on'])
     top_off = int(cfg['selection']['top_n_risk_off'])
     rotation = resolve_regime_rotation(cfg.get('selection', {}), state, top_on, top_off)
+    rotation = _apply_budget_throttle(rotation, float(regime.risk_score))
     sleeve_map_all = build_sleeve_map(scores.index, sleeve_cfg)
-    rotated_scores = apply_sleeve_rotation(scores, sleeve_map_all, rotation)
+    candidate_filters = rotation.get('candidate_filters', {}) or {}
+    exclude_sleeves = set(candidate_filters.get('exclude_sleeves', []) or [])
+    filtered_scores = scores.loc[[ticker for ticker in scores.index if sleeve_map_all.get(ticker, 'core') not in exclude_sleeves]].copy() if exclude_sleeves else scores
+    sleeve_map_filtered = build_sleeve_map(filtered_scores.index, sleeve_cfg)
+    rotated_scores = apply_sleeve_rotation(filtered_scores, sleeve_map_filtered, rotation, benchmark_ticker=cfg.get('backtest', {}).get('benchmark_ticker', 'SPY'))
 
     if state == 'RISK_ON':
         selected = rotated_scores.head(rotation['top_n']).copy()
@@ -147,6 +182,27 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
 
     selected_sleeve_map = build_sleeve_map(selected.index, sleeve_cfg)
     w = allocate_weights(selected, float(cfg['selection']['max_weight']), sleeve_map=selected_sleeve_map, sleeve_budget=rotation.get('sleeve_budget'))
+
+    overlay_cfg = cfg.get('selection', {}).get('benchmark_overlay', {}) or {}
+    if bool(overlay_cfg.get('enabled', False)):
+        benchmark_ticker = str(overlay_cfg.get('benchmark_ticker', cfg.get('backtest', {}).get('benchmark_ticker', '069500.KS')) or '')
+        base_weight = float(overlay_cfg.get('base_weight', 0.0) or 0.0)
+        attack_weight = float(overlay_cfg.get('attack_overlay_weight', 0.0) or 0.0)
+        satellite_weight = float(overlay_cfg.get('satellite_overlay_weight', 0.0) or 0.0)
+        overlay_weights = pd.Series(dtype=float)
+        if benchmark_ticker:
+            overlay_weights.loc[benchmark_ticker] = base_weight
+        for ticker in selected.index:
+            sleeve = selected_sleeve_map.get(ticker, 'core')
+            if sleeve == 'kr_attack':
+                overlay_weights.loc[ticker] = overlay_weights.get(ticker, 0.0) + attack_weight
+            elif sleeve == 'kr_satellite':
+                overlay_weights.loc[ticker] = overlay_weights.get(ticker, 0.0) + satellite_weight
+        if not overlay_weights.empty:
+            w = overlay_weights.groupby(level=0).sum()
+            total = float(w.sum())
+            if total > 0:
+                w = w / total
 
     cash = cfg['risk_cut']['action'].get('cash_kr') if any(str(t).endswith('.KS') for t in selected.index) else cfg['risk_cut']['action']['cash_us']
     final_w, cuts = apply_risk_cuts(all_px, w, cfg['risk_cut'], cash_ticker=cash)

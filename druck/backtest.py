@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 
 from .data import fetch_prices, get_date_range, make_universe
-from .engine import _detect_strategy_halt
+from .engine import _detect_strategy_halt, _apply_budget_throttle
 from .macro import compute_macro_regime, compute_rates_overlay, is_vix_spike
 from .portfolio import allocate_weights, apply_risk_cuts, score_universe, build_sleeve_map, resolve_regime_rotation, apply_sleeve_rotation, resolve_factor_preference
 
@@ -229,8 +229,13 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     top_on = int(cfg["selection"]["top_n_risk_on"])
     top_off = int(cfg["selection"]["top_n_risk_off"])
     rotation = resolve_regime_rotation(cfg.get("selection", {}), state, top_on, top_off)
+    rotation = _apply_budget_throttle(rotation, float(regime.risk_score))
     sleeve_map_all = _combined_sleeve_map(cfg, scores.index)
-    rotated_scores = apply_sleeve_rotation(scores, sleeve_map_all, rotation)
+    candidate_filters = rotation.get("candidate_filters", {}) or {}
+    exclude_sleeves = set(candidate_filters.get("exclude_sleeves", []) or [])
+    filtered_scores = scores.loc[[ticker for ticker in scores.index if sleeve_map_all.get(ticker, "core") not in exclude_sleeves]].copy() if exclude_sleeves else scores
+    sleeve_map_filtered = _combined_sleeve_map(cfg, filtered_scores.index)
+    rotated_scores = apply_sleeve_rotation(filtered_scores, sleeve_map_filtered, rotation, benchmark_ticker=cfg.get("backtest", {}).get("benchmark_ticker", "SPY"))
     if state == "RISK_ON":
         selected = rotated_scores.head(rotation["top_n"]).copy()
     elif state == "RISK_OFF":
@@ -245,6 +250,28 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     factor_selected = [ticker for ticker in selected.index if ticker in sleeve_factor]
     sleeve_map = _combined_sleeve_map(cfg, selected.index)
     weights = allocate_weights(selected, float(cfg["selection"]["max_weight"]), sleeve_map=sleeve_map, sleeve_budget=rotation.get("sleeve_budget"))
+
+    overlay_cfg = cfg.get("selection", {}).get("benchmark_overlay", {}) or {}
+    if bool(overlay_cfg.get("enabled", False)):
+        benchmark_ticker = str(overlay_cfg.get("benchmark_ticker", cfg.get("backtest", {}).get("benchmark_ticker", "069500.KS")) or "")
+        base_weight = float(overlay_cfg.get("base_weight", 0.0) or 0.0)
+        attack_weight = float(overlay_cfg.get("attack_overlay_weight", 0.0) or 0.0)
+        satellite_weight = float(overlay_cfg.get("satellite_overlay_weight", 0.0) or 0.0)
+        overlay_weights = pd.Series(dtype=float)
+        if benchmark_ticker:
+            overlay_weights.loc[benchmark_ticker] = base_weight
+        for ticker in selected.index:
+            sleeve = sleeve_map.get(ticker, "core")
+            if sleeve == "kr_attack":
+                overlay_weights.loc[ticker] = overlay_weights.get(ticker, 0.0) + attack_weight
+            elif sleeve == "kr_satellite":
+                overlay_weights.loc[ticker] = overlay_weights.get(ticker, 0.0) + satellite_weight
+        if not overlay_weights.empty:
+            weights = overlay_weights.groupby(level=0).sum()
+            total = float(weights.sum())
+            if total > 0:
+                weights = weights / total
+
     final_w, cuts = apply_risk_cuts(all_px, weights, cfg["risk_cut"], cash_ticker=cash)
     strategy_halt, halt_reason, halt_detail = _detect_strategy_halt(cfg, regime, selected, final_w, cuts, scores)
     selected.attrs["rotation_policy"] = rotation

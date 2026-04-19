@@ -45,6 +45,7 @@ def compute_rates_overlay(px: pd.DataFrame, cfg: dict | None = None) -> dict[str
 
 def compute_macro_regime(px: pd.DataFrame, thresholds: dict, weights: dict) -> MacroRegime:
     details: Dict[str, float] = {}
+    kr_cfg = thresholds.get("kr", {}) if isinstance(thresholds.get("kr", {}), dict) else {}
 
     spy = px.get("SPY")
     spy_trend = np.nan
@@ -90,12 +91,35 @@ def compute_macro_regime(px: pd.DataFrame, thresholds: dict, weights: dict) -> M
             rates_component = _clamp01(0.5 + m)
     details["rates_component"] = float(rates_component) if not np.isnan(rates_component) else np.nan
 
+    kr_benchmark_ticker = str(kr_cfg.get("benchmark_ticker", "") or "")
+    kr_cash_ticker = str(kr_cfg.get("cash_ticker", "") or "")
+
+    kr_trend_component = np.nan
+    if kr_benchmark_ticker and kr_benchmark_ticker in px.columns:
+        kr_bench = px.get(kr_benchmark_ticker)
+        if kr_bench is not None and len(kr_bench.dropna()) > 210:
+            s200 = sma(kr_bench.dropna(), 200)
+            if not np.isnan(s200):
+                kr_trend_component = float(kr_bench.dropna().iloc[-1] > s200)
+    details["kr_trend_component"] = float(kr_trend_component) if not np.isnan(kr_trend_component) else np.nan
+
+    kr_relative_component = np.nan
+    if kr_benchmark_ticker and kr_cash_ticker and kr_benchmark_ticker in px.columns and kr_cash_ticker in px.columns:
+        common = pd.concat([px.get(kr_benchmark_ticker), px.get(kr_cash_ticker)], axis=1).dropna()
+        if len(common) > 90:
+            bench_r = float(common.iloc[-1, 0] / common.iloc[-64, 0] - 1.0)
+            cash_r = float(common.iloc[-1, 1] / common.iloc[-64, 1] - 1.0)
+            kr_relative_component = _clamp01(0.5 + (bench_r - cash_r))
+    details["kr_relative_component"] = float(kr_relative_component) if not np.isnan(kr_relative_component) else np.nan
+
     comp = {
         "spy_trend": ("spy_trend", "spy_trend_weight"),
         "usd_component": ("usd_component", "usd_mom_weight"),
         "credit_component": ("credit_component", "credit_weight"),
         "vix_component": ("vix_component", "vix_weight"),
         "rates_component": ("rates_component", "rates_weight"),
+        "kr_trend_component": ("kr_trend_component", "kr_trend_weight"),
+        "kr_relative_component": ("kr_relative_component", "kr_relative_weight"),
     }
 
     used=[]

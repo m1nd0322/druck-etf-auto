@@ -87,40 +87,59 @@ Confirmed foundations across the tuning wave:
 - average turnover: `0.3228`
 - result: still below KOSPI proxy on total return, but substantially cleaner and more controllable than the earlier KR attack-heavy versions
 
+### 5) New adopted family: benchmark-plus overlay
+- changes:
+  - long-only KR core-satellite baseline was replaced by a `benchmark-plus overlay` structure
+  - `069500.KS` is now the default core holding via explicit benchmark overlay weight
+  - attack and satellite exposure are only added as overlays on top of the benchmark base
+  - current overlay weights:
+    - benchmark base: `0.70`
+    - attack overlay: `0.20`
+    - satellite overlay: `0.10`
+- result:
+  - CAGR: `0.5093088407`
+  - Sharpe: `1.7216610884`
+  - max drawdown: `-0.1993850566`
+  - average turnover: `0.3375`
+  - active return: `-0.6697466750`
+- interpretation:
+  - this is the first KR family variant in the current wave that materially improved CAGR and sharply reduced benchmark lag
+  - drawdown worsened versus the `kr_satellite` baseline, but the return jump was large enough to justify treating this as the new preferred experimental family
+
 ### Comparison across tuned variants
 | variant | CAGR | Sharpe | MDD | turnover | active return |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | clean contamination-fixed baseline | 12.98% | 1.140 | -13.55% | 0.4838 | -1.6781 |
 | aggressive KR attack tightening | 33.54% | 1.558 | -13.55% | 0.6175 | -1.1642 |
 | core-purity / low-turnover variant | 17.93% | 1.136 | -13.78% | 0.4459 | -1.5624 |
-| current preferred `kr_satellite` variant | 24.34% | 1.388 | -13.78% | 0.3228 | -1.4048 |
+| previous preferred `kr_satellite` variant | 24.34% | 1.388 | -13.78% | 0.3228 | -1.4048 |
+| new `benchmark-plus overlay` variant | 50.93% | 1.722 | -19.94% | 0.3375 | -0.6697 |
 
 ## Current design conclusion
 ### What now looks correct
 - contamination/data noise is no longer the main KR problem
-- `139230.KS` should not live in `kr_core`
-- but removing `139230.KS` completely was too conservative
-- the more robust compromise is:
-  - `kr_core`: `069500.KS`
-  - `kr_attack`: `091160.KS`, `102960.KS`
-  - `kr_satellite`: `139230.KS`
-  - `defensive`: `130730.KS`, `114260.KS`, `132030.KS`
+- pure sleeve-level KR rotation was not enough to close the benchmark gap
+- the stronger direction so far is to treat `069500.KS` as the default allocation and layer attack/satellite risk on top of it
+- the current adopted family is:
+  - benchmark base: `069500.KS`
+  - attack overlay: `091160.KS`, `102960.KS`
+  - satellite overlay: `139230.KS`
+  - defensive fallback remains available through `130730.KS`, `114260.KS`, `132030.KS`
 
-### Why `kr_satellite` matters
-`139230.KS` appears useful as a controlled source of cyclical alpha, but not as a full attack sleeve and not as part of the purity-preserving core sleeve. The explicit satellite sleeve allows:
-- capped participation in cyclical upside
-- lower turnover than the attack-heavy variant
-- cleaner operator interpretation than hiding the position inside generic `core`
+### Why benchmark-plus overlay worked better
+The earlier KR sleeve variants tried to discover alpha sleeves first and let benchmark exposure emerge indirectly. The benchmark-plus overlay family flips that logic:
+- hold the benchmark explicitly
+- add KR attack/satellite only when the selection path supports them
+- reduce the structural drag of being chronically under-exposed to the benchmark in strong phases
 
 ## Current recommendation
-The current best KR experimental direction is:
-1. keep `kr_satellite` with only `139230.KS`
-2. retain the stricter benchmark-relative filter on `kr_attack`
-3. keep the lower-turnover core-purity structure
-4. next tuning wave should focus on **timing quality**, not just sleeve membership:
-   - `kr_satellite` entry/exit timing
-   - `kr_attack` activation timing
-   - KR-specific halt / risk-cut timing calibration
+The current best KR experimental direction is now:
+1. use `069500.KS` as the explicit base holding
+2. add attack and satellite sleeves only as overlays
+3. keep benchmark-relative controls on `kr_attack`
+4. next comparison step should be against a simpler KR dual-momentum family, not more micro-tuning of the older sleeve-only design
 
 ## Practical next step
-If the goal remains beating the KOSPI proxy, the next likely lever is no longer broad universe cleanup. The next likely lever is finer KR timing logic on top of the current sleeve structure.
+Because the benchmark-plus overlay family is now the first clear CAGR improvement over the older KR satellite baseline, the next valid family comparison is:
+- benchmark-plus overlay (new adopted direction)
+- versus KR benchmark-aware dual momentum

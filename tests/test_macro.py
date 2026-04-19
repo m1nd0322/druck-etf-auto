@@ -37,6 +37,28 @@ def test_compute_macro_regime_returns_risk_on_for_supportive_inputs():
     assert regime.risk_score >= 0.55
 
 
+def test_compute_macro_regime_supports_kr_specific_components():
+    px = make_price_frame()
+    idx = px.index
+    px["069500.KS"] = pd.Series([100 + i * 0.22 for i in range(len(idx))], index=idx)
+    px["130730.KS"] = pd.Series([100 + i * 0.01 for i in range(len(idx))], index=idx)
+    thresholds = {"risk_on_score_min": 0.55, "risk_off_score_max": 0.45}
+    weights = {
+        "spy_trend_weight": 0.25,
+        "usd_mom_weight": 0.10,
+        "credit_weight": 0.15,
+        "vix_weight": 0.15,
+        "rates_weight": 0.15,
+        "kr_trend_weight": 0.10,
+        "kr_relative_weight": 0.10,
+    }
+    thresholds["kr"] = {"benchmark_ticker": "069500.KS", "cash_ticker": "130730.KS"}
+    regime = compute_macro_regime(px, thresholds, weights)
+    assert regime.details["kr_trend_component"] >= 0.0
+    assert regime.details["kr_relative_component"] >= 0.0
+    assert regime.state == "RISK_ON"
+
+
 def test_compute_rates_overlay_detects_falling_rate_support():
     px = make_price_frame()
     overlay = compute_rates_overlay(px, {"up_threshold": 0.02, "down_threshold": -0.02})

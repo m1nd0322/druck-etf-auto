@@ -50,12 +50,17 @@ macro_filter:
   thresholds:
     risk_on_score_min: 0.55
     risk_off_score_max: 0.45
+    kr:
+      benchmark_ticker: 069500.KS
+      cash_ticker: 130730.KS
   components:
-    spy_trend_weight: 0.35
-    usd_mom_weight: 0.20
+    spy_trend_weight: 0.20
+    usd_mom_weight: 0.15
     credit_weight: 0.00
-    vix_weight: 0.25
-    rates_weight: 0.20
+    vix_weight: 0.20
+    rates_weight: 0.15
+    kr_trend_weight: 0.15
+    kr_relative_weight: 0.15
   rates_overlay:
     up_threshold: 0.02
     down_threshold: -0.02
@@ -102,11 +107,17 @@ selection:
     defensive: 0.65
   regime_factor_map:
     enabled: false
+  benchmark_overlay:
+    enabled: true
+    benchmark_ticker: 069500.KS
+    base_weight: 0.70
+    attack_overlay_weight: 0.20
+    satellite_overlay_weight: 0.10
   regime_sleeve_rotation:
     enabled: true
     RISK_ON:
       top_n: 3
-      preferred_sleeves: [kr_attack]
+      preferred_sleeves: [kr_attack, kr_satellite]
       sleeve_budget:
         kr_core: 0.45
         kr_attack: 0.25
@@ -116,6 +127,27 @@ selection:
         kr_attack: 0.10
         kr_satellite: 0.08
         kr_core: 0.08
+      budget_throttle:
+        sleeves:
+          kr_attack:
+            risk_score_below: 0.72
+            scale: 0.60
+            floor: 0.10
+          kr_satellite:
+            risk_score_below: 0.72
+            scale: 0.50
+            floor: 0.05
+      timing_filters:
+        kr_satellite:
+          mode: exclude
+          min_momentum: 0.05
+          min_trend: 0.05
+          min_momentum_gap_vs_core: 0.01
+          min_relative_gap_vs_core: 0.01
+        kr_attack:
+          mode: penalty
+          min_relative_strength_6m: 0.04
+          penalty: 0.10
     NEUTRAL:
       top_n: 2
       preferred_sleeves: [kr_core, defensive]
@@ -124,10 +156,30 @@ selection:
         kr_attack: 0.10
         kr_satellite: 0.10
         defensive: 0.45
+      budget_throttle:
+        sleeves:
+          kr_attack:
+            risk_score_below: 0.55
+            scale: 0.50
+            floor: 0.05
+          kr_satellite:
+            risk_score_below: 0.55
+            scale: 0.50
+            floor: 0.03
       score_tilt:
         kr_core: 0.05
         kr_satellite: 0.04
         defensive: 0.10
+      timing_filters:
+        kr_satellite:
+          mode: exclude
+          min_momentum: 0.08
+          min_trend: 0.08
+          min_momentum_gap_vs_core: 0.02
+          min_relative_gap_vs_core: 0.01
+        kr_attack:
+          mode: exclude
+          min_relative_strength_6m: 0.06
     RISK_OFF:
       top_n: 2
       preferred_sleeves: [defensive]
@@ -136,6 +188,8 @@ selection:
         kr_attack: 0.10
         kr_satellite: 0.05
         defensive: 0.90
+      candidate_filters:
+        exclude_sleeves: [kr_satellite]
       score_tilt:
         defensive: 0.18
         kr_attack: -0.08
@@ -218,11 +272,11 @@ strategy_halt:
   max_negative_momentum_assets: 2
   performance:
     enabled: true
-    min_average_score: 0.00
-    max_average_momentum: -0.02
-    recent_total_return: -0.03
+    min_average_score: -0.25
+    max_average_momentum: -0.18
+    recent_total_return: -0.22
     benchmark_ticker: 069500.KS
-    benchmark_relative_return: -0.08
+    benchmark_relative_return: -0.10
 
 schedule:
   timezone: "Asia/Seoul"
