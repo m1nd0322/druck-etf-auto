@@ -154,18 +154,54 @@ def resolve_regime_rotation(selection_cfg: dict | None, regime_state: str, defau
         "sleeve_budget": regime_cfg.get("sleeve_budget") or selection_cfg.get("sleeve_budget", {}) or {},
         "score_tilt": regime_cfg.get("score_tilt") or {},
         "preferred_sleeves": list(regime_cfg.get("preferred_sleeves", []) or []),
+        "timing_filters": regime_cfg.get("timing_filters") or {},
+        "candidate_filters": regime_cfg.get("candidate_filters") or {},
+        "budget_throttle": regime_cfg.get("budget_throttle") or {},
     }
 
 
-def apply_sleeve_rotation(scores: pd.DataFrame, sleeve_map: dict[str, str] | None, rotation: dict | None) -> pd.DataFrame:
+def apply_sleeve_rotation(scores: pd.DataFrame, sleeve_map: dict[str, str] | None, rotation: dict | None, benchmark_ticker: str | None = None) -> pd.DataFrame:
     if scores.empty or not sleeve_map or not rotation or not rotation.get("enabled", False):
         return scores
     out = scores.copy()
     score_tilt = rotation.get("score_tilt", {}) or {}
     preferred_sleeves = set(rotation.get("preferred_sleeves", []) or [])
+    timing_filters = rotation.get("timing_filters", {}) or {}
     out["sleeve"] = [sleeve_map.get(t, "core") for t in out.index]
     out["sleeve_rotation_bonus"] = [float(score_tilt.get(sleeve_map.get(t, "core"), 0.0)) for t in out.index]
     out["rotation_preferred"] = [sleeve_map.get(t, "core") in preferred_sleeves for t in out.index]
+    out["timing_filter_fail"] = False
+    out["timing_filter_mode"] = ""
+
+    if timing_filters:
+        benchmark_row = out.loc[benchmark_ticker] if benchmark_ticker and benchmark_ticker in out.index else None
+        for ticker in list(out.index):
+            sleeve = sleeve_map.get(ticker, "core")
+            rule = timing_filters.get(sleeve) or {}
+            if not rule:
+                continue
+            fail = False
+            if "min_momentum" in rule and float(out.at[ticker, "momentum"]) < float(rule.get("min_momentum", 0.0)):
+                fail = True
+            if "min_trend" in rule and float(out.at[ticker, "trend"]) < float(rule.get("min_trend", 0.0)):
+                fail = True
+            if "min_relative_strength_6m" in rule and float(out.at[ticker, "relative_strength_6m"]) < float(rule.get("min_relative_strength_6m", 0.0)):
+                fail = True
+            if benchmark_row is not None and "min_momentum_gap_vs_core" in rule:
+                if float(out.at[ticker, "momentum"]) - float(benchmark_row.get("momentum", 0.0)) < float(rule.get("min_momentum_gap_vs_core", 0.0)):
+                    fail = True
+            if benchmark_row is not None and "min_relative_gap_vs_core" in rule:
+                if float(out.at[ticker, "relative_strength_6m"]) - float(benchmark_row.get("relative_strength_6m", 0.0)) < float(rule.get("min_relative_gap_vs_core", 0.0)):
+                    fail = True
+            if fail:
+                mode = str(rule.get("mode", "penalty") or "penalty").strip().lower()
+                out.at[ticker, "timing_filter_fail"] = True
+                out.at[ticker, "timing_filter_mode"] = mode
+                if mode == "exclude":
+                    out = out.drop(index=ticker)
+                else:
+                    out.at[ticker, "sleeve_rotation_bonus"] = float(out.at[ticker, "sleeve_rotation_bonus"]) - float(rule.get("penalty", 0.0) or 0.0)
+
     out["score"] = out["score"] + out["sleeve_rotation_bonus"]
     return out.sort_values(["score", "rotation_preferred"], ascending=[False, False])
 

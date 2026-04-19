@@ -192,7 +192,9 @@ def test_run_once_supports_kr_sleeve_rotation_and_budgeting(monkeypatch):
             "max_weight": 1.0,
             "score_weights": {"momentum": 0.35, "trend": 0.20, "persistence": 0.15, "recovery": 0.15, "downside_efficiency": 0.15, "relative_strength": 0.10, "vol_penalty": 0.10, "dd_penalty": 0.10},
             "benchmark_relative_filter": {"enabled": True, "mode": "exclude", "min_relative_strength_6m": 0.0, "penalty": 0.25, "apply_to_sleeves": ["kr_attack"]},
-            "benchmark_overlay": {"enabled": True, "benchmark_ticker": "069500.KS", "base_weight": 0.70, "attack_overlay_weight": 0.20, "satellite_overlay_weight": 0.10},
+            "strategy_family": "dual_momentum",
+            "dual_momentum_top_n": 2,
+            "benchmark_overlay": {"enabled": False, "benchmark_ticker": "069500.KS", "base_weight": 0.70, "attack_overlay_weight": 0.20, "satellite_overlay_weight": 0.10},
             "regime_sleeve_rotation": {"enabled": True, "RISK_ON": {"top_n": 3, "preferred_sleeves": ["kr_attack", "kr_satellite"], "sleeve_budget": {"kr_core": 0.45, "kr_attack": 0.25, "kr_satellite": 0.15, "defensive": 0.20}, "score_tilt": {"kr_attack": 0.18, "kr_satellite": 0.08, "kr_core": 0.04}, "timing_filters": {"kr_satellite": {"mode": "exclude", "min_momentum": 0.05, "min_trend": 0.05}, "kr_attack": {"mode": "penalty", "min_relative_strength_6m": 0.04, "penalty": 0.10}}}},
         },
         "macro_filter": {
@@ -235,7 +237,8 @@ def test_run_once_supports_kr_sleeve_rotation_and_budgeting(monkeypatch):
     monkeypatch.setattr("druck.engine.send_telegram", lambda cfg, msg: None)
 
     result = run_once(cfg, do_trade=False)
-    assert result["target_weights"]["069500.KS"] >= 0.69
+    assert result["target_weights"].sum() == pytest.approx(1.0)
+    assert "069500.KS" in result["target_weights"].index
     assert result["selected_sleeves"]["069500.KS"] == "kr_core"
     assert result["rotation_policy"]["preferred_sleeves"] == ["kr_attack", "kr_satellite"]
     assert result["rotation_policy"]["sleeve_budget"]["kr_satellite"] == 0.15

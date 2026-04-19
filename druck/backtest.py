@@ -251,8 +251,30 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     sleeve_map = _combined_sleeve_map(cfg, selected.index)
     weights = allocate_weights(selected, float(cfg["selection"]["max_weight"]), sleeve_map=sleeve_map, sleeve_budget=rotation.get("sleeve_budget"))
 
+    strategy_family = str(cfg.get("selection", {}).get("strategy_family", "overlay") or "overlay").strip().lower()
     overlay_cfg = cfg.get("selection", {}).get("benchmark_overlay", {}) or {}
-    if bool(overlay_cfg.get("enabled", False)):
+    if strategy_family == "dual_momentum":
+        benchmark_ticker = str(cfg.get("backtest", {}).get("benchmark_ticker", "069500.KS") or "")
+        cash_ticker = str(cfg.get("risk_cut", {}).get("action", {}).get("cash_kr", "130730.KS") or "")
+        dual_top_n = int(cfg.get("selection", {}).get("dual_momentum_top_n", 2) or 2)
+        eligible = rotated_scores.copy()
+        if benchmark_ticker in eligible.index:
+            benchmark_row = eligible.loc[benchmark_ticker]
+            benchmark_momentum = float(benchmark_row.get("momentum", 0.0))
+            eligible = eligible.loc[(eligible["momentum"].fillna(-999.0) >= 0.0)]
+            eligible = eligible.loc[(eligible["relative_strength_6m"].fillna(-999.0) >= -0.02)]
+            selected = eligible.sort_values(["relative_strength_6m", "momentum"], ascending=False).head(dual_top_n).copy()
+            if selected.empty and cash_ticker:
+                weights = pd.Series({cash_ticker: 1.0})
+            else:
+                dm_weights = pd.Series(dtype=float)
+                for ticker in selected.index:
+                    dm_weights.loc[ticker] = 1.0 / max(len(selected.index), 1)
+                if benchmark_ticker not in dm_weights.index and benchmark_ticker in rotated_scores.index:
+                    dm_weights.loc[benchmark_ticker] = 0.5
+                total = float(dm_weights.sum())
+                weights = dm_weights / total if total > 0 else dm_weights
+    elif bool(overlay_cfg.get("enabled", False)):
         benchmark_ticker = str(overlay_cfg.get("benchmark_ticker", cfg.get("backtest", {}).get("benchmark_ticker", "069500.KS")) or "")
         base_weight = float(overlay_cfg.get("base_weight", 0.0) or 0.0)
         attack_weight = float(overlay_cfg.get("attack_overlay_weight", 0.0) or 0.0)

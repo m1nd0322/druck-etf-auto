@@ -87,12 +87,12 @@ Confirmed foundations across the tuning wave:
 - average turnover: `0.3228`
 - result: still below KOSPI proxy on total return, but substantially cleaner and more controllable than the earlier KR attack-heavy versions
 
-### 5) New adopted family: benchmark-plus overlay
+### 5) Benchmark-plus overlay family
 - changes:
   - long-only KR core-satellite baseline was replaced by a `benchmark-plus overlay` structure
-  - `069500.KS` is now the default core holding via explicit benchmark overlay weight
+  - `069500.KS` is the default core holding via explicit benchmark overlay weight
   - attack and satellite exposure are only added as overlays on top of the benchmark base
-  - current overlay weights:
+  - overlay weights:
     - benchmark base: `0.70`
     - attack overlay: `0.20`
     - satellite overlay: `0.10`
@@ -102,9 +102,24 @@ Confirmed foundations across the tuning wave:
   - max drawdown: `-0.1993850566`
   - average turnover: `0.3375`
   - active return: `-0.6697466750`
+
+### 6) New adopted family: benchmark-aware dual momentum
+- changes:
+  - disabled benchmark overlay weighting
+  - switched KR strategy family to `dual_momentum`
+  - keep `069500.KS` inside the candidate set as benchmark-aware anchor rather than fixed base weight
+  - select top KR candidates by positive absolute momentum plus relative-strength leadership, then re-normalize weights
+- result:
+  - CAGR: `0.5239818367`
+  - Sharpe: `1.6217017645`
+  - max drawdown: `-0.1970445693`
+  - average turnover: `0.4166666667`
+  - active return: `-0.6244246735`
 - interpretation:
-  - this is the first KR family variant in the current wave that materially improved CAGR and sharply reduced benchmark lag
-  - drawdown worsened versus the `kr_satellite` baseline, but the return jump was large enough to justify treating this as the new preferred experimental family
+  - this variant beat the benchmark-plus overlay on the user’s acceptance gate, CAGR
+  - it also slightly improved active return and max drawdown
+  - tradeoff: Sharpe fell modestly and turnover rose meaningfully
+  - despite that tradeoff, this becomes the new preferred KR family under the CAGR-first rule
 
 ### Comparison across tuned variants
 | variant | CAGR | Sharpe | MDD | turnover | active return |
@@ -113,33 +128,33 @@ Confirmed foundations across the tuning wave:
 | aggressive KR attack tightening | 33.54% | 1.558 | -13.55% | 0.6175 | -1.1642 |
 | core-purity / low-turnover variant | 17.93% | 1.136 | -13.78% | 0.4459 | -1.5624 |
 | previous preferred `kr_satellite` variant | 24.34% | 1.388 | -13.78% | 0.3228 | -1.4048 |
-| new `benchmark-plus overlay` variant | 50.93% | 1.722 | -19.94% | 0.3375 | -0.6697 |
+| benchmark-plus overlay variant | 50.93% | 1.722 | -19.94% | 0.3375 | -0.6697 |
+| new benchmark-aware dual momentum variant | 52.40% | 1.622 | -19.70% | 0.4167 | -0.6244 |
 
 ## Current design conclusion
 ### What now looks correct
 - contamination/data noise is no longer the main KR problem
 - pure sleeve-level KR rotation was not enough to close the benchmark gap
-- the stronger direction so far is to treat `069500.KS` as the default allocation and layer attack/satellite risk on top of it
+- benchmark-plus overlay was a real step forward, but a benchmark-aware dual momentum family performed slightly better on the user’s CAGR-first acceptance rule
 - the current adopted family is:
-  - benchmark base: `069500.KS`
-  - attack overlay: `091160.KS`, `102960.KS`
-  - satellite overlay: `139230.KS`
+  - benchmark-aware dual momentum with `069500.KS` included in the KR candidate set
+  - attack leadership primarily expressed through `091160.KS`, `102960.KS`
+  - satellite participation still showing up through `139230.KS`
   - defensive fallback remains available through `130730.KS`, `114260.KS`, `132030.KS`
 
-### Why benchmark-plus overlay worked better
-The earlier KR sleeve variants tried to discover alpha sleeves first and let benchmark exposure emerge indirectly. The benchmark-plus overlay family flips that logic:
-- hold the benchmark explicitly
-- add KR attack/satellite only when the selection path supports them
-- reduce the structural drag of being chronically under-exposed to the benchmark in strong phases
+### Why dual momentum now leads
+The overlay family fixed chronic benchmark under-exposure by forcing a base holding. The dual-momentum family improved further by letting `069500.KS` compete directly with KR alpha sleeves instead of pre-allocating it:
+- keep benchmark awareness through `069500.KS`
+- require positive momentum / acceptable relative strength
+- allow the benchmark to remain held when it is still one of the strongest choices
+- avoid forcing benchmark weight when attack sleeves have clearer leadership
 
 ## Current recommendation
 The current best KR experimental direction is now:
-1. use `069500.KS` as the explicit base holding
-2. add attack and satellite sleeves only as overlays
+1. use the benchmark-aware dual momentum family as the lead KR design
+2. retain `069500.KS` as an explicit benchmark-aware candidate inside the KR selection set
 3. keep benchmark-relative controls on `kr_attack`
-4. next comparison step should be against a simpler KR dual-momentum family, not more micro-tuning of the older sleeve-only design
+4. if a next research wave is needed, compare this family against a more explicit risk-managed variant rather than returning to sleeve-only micro-tuning
 
 ## Practical next step
-Because the benchmark-plus overlay family is now the first clear CAGR improvement over the older KR satellite baseline, the next valid family comparison is:
-- benchmark-plus overlay (new adopted direction)
-- versus KR benchmark-aware dual momentum
+The next valid step is no longer to compare old sleeve variants. It is to refine or stress-test the dual momentum family, since it now edges out benchmark-plus overlay on CAGR.

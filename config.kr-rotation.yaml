@@ -69,6 +69,8 @@ selection:
   top_n_risk_on: 4
   top_n_risk_off: 2
   max_weight: 0.30
+  strategy_family: dual_momentum
+  dual_momentum_top_n: 2
   regime_factor_bias: {}
   score_weights:
     momentum: 0.26
@@ -108,7 +110,7 @@ selection:
   regime_factor_map:
     enabled: false
   benchmark_overlay:
-    enabled: true
+    enabled: false
     benchmark_ticker: 069500.KS
     base_weight: 0.70
     attack_overlay_weight: 0.20
