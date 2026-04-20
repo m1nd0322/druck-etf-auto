@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from druck.data import _cache_key, fetch_prices, make_universe, generate_kr_etf_universe, _summarize_provider_issues, ProviderIssue
+from druck.data import _cache_key, fetch_prices, fetch_prices_fdr, make_universe, generate_kr_etf_universe, _summarize_provider_issues, ProviderIssue
 
 
 def test_cache_key_is_stable():
@@ -182,6 +182,25 @@ def test_fetch_prices_attaches_provider_warning_summary(monkeypatch, tmp_path):
     assert summary["counts"]["rate_limit"] == 1
     assert summary["tickers"]["rate_limit"] == ["SPY"]
     assert "provider rate-limit detected" in summary["summary"]
+
+
+def test_fetch_prices_fdr_strips_ks_suffix_for_provider_lookup(monkeypatch):
+    idx = pd.to_datetime(["2024-01-01", "2024-01-02"])
+
+    class FakeFDR:
+        calls = []
+
+        @classmethod
+        def DataReader(cls, ticker, start, end):
+            cls.calls.append(ticker)
+            return pd.DataFrame({"Close": [100.0, 101.0]}, index=idx)
+
+    import sys
+    monkeypatch.setitem(sys.modules, "FinanceDataReader", FakeFDR)
+
+    result = fetch_prices_fdr(["005930.KS"], "2024-01-01", "2024-01-03")
+    assert FakeFDR.calls == ["005930"]
+    assert list(result.columns) == ["005930.KS"]
 
 
 def test_fetch_prices_records_yf_partial_success_stderr_noise(monkeypatch, tmp_path):

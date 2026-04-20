@@ -310,6 +310,16 @@ schedule:
   risk_check_daily:
     hour: 16
     minute: 5
+  market_data_collection:
+    enabled: true
+    kr_daily:
+      hour: 6
+      minute: 0
+      command: "/home/node/.openclaw/workspace/tmp/druck-etf-auto/automation/market-data/run_kr_collect.sh"
+    us_daily:
+      hour: 17
+      minute: 0
+      command: "/home/node/.openclaw/workspace/tmp/druck-etf-auto/automation/market-data/run_us_collect.sh"
 
 notifier:
   telegram:

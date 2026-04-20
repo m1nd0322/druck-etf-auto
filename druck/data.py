@@ -117,12 +117,16 @@ def fetch_prices_fdr(tickers: List[str], start: str, end: str) -> pd.DataFrame:
     out={}
     for t in tickers:
         try:
-            s=fdr.DataReader(t, start, end)
+            provider_ticker = str(t)
+            output_ticker = str(t)
+            if provider_ticker.endswith('.KS'):
+                provider_ticker = provider_ticker[:-3]
+            s=fdr.DataReader(provider_ticker, start, end)
             if s is None or len(s)==0:
                 continue
             col = 'Close' if 'Close' in s.columns else ('close' if 'close' in s.columns else None)
             if col:
-                out[t]=s[col]
+                out[output_ticker]=s[col]
         except Exception:
             continue
     if not out:
