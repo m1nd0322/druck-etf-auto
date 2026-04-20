@@ -85,6 +85,7 @@ Expected behavior:
 - `run_backtest.py` - run a backtest snapshot
 - `run_auto.py` - scheduler entry point
 - `run_web.py` - web dashboard entry point
+- `run_collect_market_data.py` - collect FDR listings, prices, and indexes into parquet
 
 ## 1. Installation
 
@@ -158,6 +159,43 @@ Important note:
 - the backtest engine is now materially stronger than the original scaffold
 - it supports periodic rebalancing, turnover, transaction cost impact, slippage and market-impact cost modeling, benchmark comparison, point-in-time defensive handling, historical universe timeline hooks, volume-data hooks for ADV-style liquidity estimates, walk-forward evaluation, scenario summaries, and core analytics
 - it is still not a full multi-asset institutional research platform with corporate actions research controls, survivorship-bias-free vendor history, and exchange-microstructure-perfect execution modeling
+
+## Market data collection
+
+A parquet-first market data collector is available for reusable research datasets.
+
+It can store:
+- KRX stock listings: `KOSPI`, `KOSDAQ`
+- KRX administrative datasets: `KRX-DELISTING`, `KRX-ADMINISTRATIVE`, `KRX-MARCAP`
+- ETF listings: `ETF/KR`, `ETF/US`
+- US stock listings: `NASDAQ`, `S&P500`
+- KR/US stock and ETF price snapshots
+- KR/US index snapshots
+
+Example smoke run:
+
+```bash
+. .venv/bin/activate
+python run_collect_market_data.py --lookback-years 1 --prices-limit 5
+```
+
+Full run:
+
+```bash
+. .venv/bin/activate
+python run_collect_market_data.py --lookback-years 3 --full
+```
+
+Output root:
+- `data/market_data/listings/*.parquet`
+- `data/market_data/prices/*.parquet`
+- `data/market_data/indexes/*.parquet`
+- `data/market_data/metadata/market_data_collection_summary.json`
+
+Note:
+- listings currently collect reliably in this environment
+- US price snapshots also collected successfully in smoke tests
+- KR individual stock/ETF price snapshots may still require provider stabilization depending on FinanceDataReader/yfinance availability for `.KS` symbols in the current environment
 
 ## 5. Understand key safety controls
 
