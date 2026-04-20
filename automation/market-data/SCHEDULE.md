@@ -36,3 +36,9 @@ schedule:
 - Scheduler timezone is `Asia/Seoul`.
 - Cron delivery is set to `none` so Telegram `@heartbeat` delivery resolution failures do not mark otherwise-useful collection runs as delivery errors.
 - Logs are written by each shell wrapper into `automation/market-data/*.log`.
+- Current tuned operational chunk sizes:
+  - KR: `1`
+  - US: `50`
+  - indexes: `10`
+- Important operational note: KR collection currently behaves reliably only with effectively single-ticker chunks. In testing, KR sample collection succeeded with chunk size `1` but failed again with larger chunks, so KR remains intentionally conservative.
+- Summary JSON now includes per-group `missing_ticker_examples` and `warning_summary` so the first daily cron runs can be reviewed quickly without opening every parquet artifact.
