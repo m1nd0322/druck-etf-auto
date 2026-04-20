@@ -32,6 +32,7 @@ schedule:
 
 ## Notes
 
-- This uses the project scheduler in `druck/scheduler.py`, not system crontab.
+- The current active production schedule is attached through OpenClaw built-in cron, not system crontab.
 - Scheduler timezone is `Asia/Seoul`.
+- Cron delivery is set to `none` so Telegram `@heartbeat` delivery resolution failures do not mark otherwise-useful collection runs as delivery errors.
 - Logs are written by each shell wrapper into `automation/market-data/*.log`.
