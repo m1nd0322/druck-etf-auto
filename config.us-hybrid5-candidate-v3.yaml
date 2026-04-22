@@ -334,7 +334,7 @@ universe:
     sector_tickers: []
     tickers:
     - SPY
-    - SMH
+    - XLK
     - TLT
     - GLD
-    - QLD
+    - SSO
