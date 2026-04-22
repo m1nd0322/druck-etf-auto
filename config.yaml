@@ -17,41 +17,16 @@ universe:
     blacklist_tickers: []
   us:
     auto_generate: false
+    # Hybrid live-rotation 5 for US: core, growth, defense, alternative, offense
     tickers:
-      - SPY
-      - QQQ
-      - HYG
-      - IEF
-      - TLT
-      - SHY
-      - UUP
-      - ^VIX
-    factor_tickers:
-      - MTUM
-      - QUAL
-      - USMV
-      - VLUE
-      - SIZE
-    sector_tickers:
-      - XLF
-      - XLK
-      - XLE
-      - XLV
-      - XLI
-      - XLP
-      - XLY
-      - XLU
-      - XLB
-      - XLRE
-      - XBI
-      - SMH
-    country_tickers:
-      - EEM
-      - EWZ
-      - EFA
-      - FXI
-      - EWJ
-      - INDA
+      - SPY   # core US equity beta
+      - SMH   # growth / semiconductor leadership
+      - TLT   # defensive long-duration bonds
+      - GLD   # crisis diversification / alternative hedge
+      - QLD   # offensive leveraged Nasdaq sleeve
+    factor_tickers: []
+    sector_tickers: []
+    country_tickers: []
 
 macro_filter:
   enabled: true
@@ -225,7 +200,7 @@ risk_cut:
     hard_stop_cut: -0.18
   action:
     cut_to_cash: true
-    cash_us: SHY
+    cash_us: TLT   # use bonds as US defensive parking asset for the hybrid 5 set
     cash_kr: 130730.KS
 
 rebalance:

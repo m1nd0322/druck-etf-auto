@@ -11,28 +11,25 @@ data:
 universe:
   kr:
     auto_generate: false
-    include_leveraged: false
+    include_leveraged: true
     include_inverse: false
+    # Hybrid live-rotation 5 for KR: core, growth, defense, alternative, offense
     core_tickers:
-      - 069500.KS
+      - 069500.KS   # core Korea equity beta
     attack_tickers:
-      - 091160.KS
-      - 102960.KS
+      - 091160.KS   # semiconductor leadership
+      - 122630.KS   # offensive leveraged KOSPI sleeve
     satellite_tickers:
-      - 139230.KS
+      - 132030.KS   # gold hedge / alternative sleeve
     defensive_tickers:
-      - 130730.KS
-      - 114260.KS
-      - 132030.KS
-    cash_ticker: 130730.KS
+      - 114260.KS   # defensive KR bond sleeve
+    cash_ticker: 114260.KS
     whitelist_tickers:
       - 069500.KS   # KODEX 200
       - 091160.KS   # KODEX 반도체
-      - 102960.KS   # KODEX 기계장비
-      - 139230.KS   # TIGER 200 중공업 (satellite)
-      - 130730.KS   # KOSEF 단기자금
       - 114260.KS   # KODEX 국고채3년
       - 132030.KS   # KODEX 골드선물(H)
+      - 122630.KS   # KODEX 레버리지
     blacklist_tickers: []
   us:
     auto_generate: false
@@ -52,7 +49,7 @@ macro_filter:
     risk_off_score_max: 0.45
     kr:
       benchmark_ticker: 069500.KS
-      cash_ticker: 130730.KS
+      cash_ticker: 114260.KS
   components:
     spy_trend_weight: 0.20
     usd_mom_weight: 0.15
@@ -205,7 +202,7 @@ risk_cut:
   action:
     cut_to_cash: true
     cash_us: SHY
-    cash_kr: 130730.KS
+    cash_kr: 114260.KS   # use KR treasury ETF as defensive parking asset for the hybrid 5 set
 
 rebalance:
   min_trade_weight_diff: 0.01

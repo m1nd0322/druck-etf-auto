@@ -1,3 +1,4 @@
+import argparse
 from pprint import pprint
 
 from druck.backtest import run_backtest
@@ -14,7 +15,12 @@ def _print_optional_report(title: str, df):
 
 
 if __name__ == "__main__":
-    cfg = load_config("config.yaml")
+    parser = argparse.ArgumentParser(description="Run druck backtest")
+    parser.add_argument("--config", default="config.yaml", help="config path")
+    args = parser.parse_args()
+
+    cfg = load_config(args.config)
+    print(f"[run_backtest] config={args.config}")
 
     db_reporter = db_runtime_reporter()
 
