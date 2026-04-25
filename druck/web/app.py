@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sqlite3
 import traceback
 from datetime import datetime
@@ -16,6 +17,7 @@ from ..backtest import run_backtest
 from ..config import load_config
 from ..db import fetch_operator_ack, fetch_runtime_events, fetch_trade_audit, init_db, log_operator_ack, resolve_runtime_event
 from ..engine import run_once
+from ..notifier import send_telegram
 
 _HERE = Path(__file__).resolve().parent
 
@@ -58,6 +60,74 @@ def _read_report(filename: str) -> str | None:
     if p.exists() and p.suffix == ".md":
         return p.read_text(encoding="utf-8")
     return None
+
+
+_NAME_CACHE: dict[str, str] | None = None
+
+
+def _symbol_variants(symbol: str) -> list[str]:
+    raw = str(symbol or '').strip()
+    if not raw:
+        return []
+    variants: list[str] = []
+    for candidate in [raw, raw.upper()]:
+        if candidate and candidate not in variants:
+            variants.append(candidate)
+    base = raw[:-3] if raw.upper().endswith('.KS') else raw
+    for candidate in [base, base.upper()]:
+        if candidate and candidate not in variants:
+            variants.append(candidate)
+    if base.isdigit() and len(base) == 6:
+        for candidate in [f'{base}.KS', f'{base}.KS'.upper()]:
+            if candidate not in variants:
+                variants.append(candidate)
+    return variants
+
+
+def _lookup_ticker_name(symbol: str) -> str:
+    names = _load_ticker_names()
+    for candidate in _symbol_variants(symbol):
+        if candidate in names and names[candidate]:
+            return names[candidate]
+    return str(symbol)
+
+
+def _load_ticker_names() -> dict[str, str]:
+    global _NAME_CACHE
+    if _NAME_CACHE is not None:
+        return _NAME_CACHE
+
+    names: dict[str, str] = {}
+    listings_root = _root() / 'data' / 'market_data' / 'listings'
+    for filename in ['kr_etf.parquet', 'krx_kospi.parquet', 'krx_kosdaq.parquet', 'us_etf.parquet', 'us_nasdaq.parquet', 'us_sp500.parquet']:
+        path = listings_root / filename
+        if not path.exists():
+            continue
+        try:
+            df = pd.read_parquet(path)
+        except Exception as exc:
+            print(f'[web] ticker-name load failed for {path}: {exc}')
+            continue
+        if df.empty:
+            continue
+        cols = {str(c).lower(): c for c in df.columns}
+        symbol_col = cols.get('symbol') or cols.get('code') or cols.get('ticker')
+        name_col = cols.get('name') or cols.get('nm')
+        if not symbol_col or not name_col:
+            print(f'[web] ticker-name skipped for {path}: missing symbol/name columns in {list(df.columns)}')
+            continue
+        slim = df[[symbol_col, name_col]].dropna().copy()
+        for _, row in slim.iterrows():
+            raw_symbol = str(row[symbol_col]).strip()
+            raw_name = str(row[name_col]).strip()
+            if not raw_symbol or not raw_name:
+                continue
+            for candidate in _symbol_variants(raw_symbol):
+                names.setdefault(candidate, raw_name)
+
+    print(f'[web] ticker-name cache loaded: {len(names)} symbols from {listings_root}')
+    _NAME_CACHE = names
+    return _NAME_CACHE
 
 
 
@@ -105,6 +175,16 @@ def _read_runtime_events(limit: int = 20) -> list[dict[str, Any]]:
 
 
 
+def _num(value: Any, default: float = 0.0) -> float:
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return default
+    if math.isnan(value) or math.isinf(value):
+        return default
+    return value
+
+
 def _format_regime_result(result: dict) -> dict:
     regime = result["regime"]
     scores: pd.DataFrame = result["scores"]
@@ -119,29 +199,29 @@ def _format_regime_result(result: dict) -> dict:
 
     etfs = []
     for ticker in weights.index:
-        w = float(weights.get(ticker, 0))
+        w = _num(weights.get(ticker, 0))
         if w <= 0:
             continue
-        row: Dict[str, Any] = {"ticker": ticker, "weight": round(w * 100, 2), "sleeve": selected_sleeves.get(ticker, "core")}
+        row: Dict[str, Any] = {"ticker": ticker, "name": _lookup_ticker_name(ticker), "weight": round(w * 100, 2), "sleeve": selected_sleeves.get(ticker, "core")}
         if ticker in scores.index:
             s = scores.loc[ticker]
-            row["score"] = round(float(s.get("score", 0)), 4)
-            row["momentum"] = round(float(s.get("momentum", 0)), 4)
-            row["trend"] = round(float(s.get("trend", 0)), 4)
-            row["vol"] = round(float(s.get("vol", 0)), 4)
-            row["mdd"] = round(float(s.get("mdd_1y", 0)), 4)
-            row["relative_strength"] = round(float(s.get("relative_strength_6m", 0)), 4)
-            row["capacity_score"] = round(float(s.get("capacity_score", 0)), 4)
-            row["diversification_score"] = round(float(s.get("diversification_score", 0)), 4)
-            row["diversification_penalty"] = round(float(s.get("diversification_penalty", 0)), 4)
-            row["residual_strength"] = round(float(s.get("residual_strength", 0)), 4)
+            row["score"] = round(_num(s.get("score", 0)), 4)
+            row["momentum"] = round(_num(s.get("momentum", 0)), 4)
+            row["trend"] = round(_num(s.get("trend", 0)), 4)
+            row["vol"] = round(_num(s.get("vol", 0)), 4)
+            row["mdd"] = round(_num(s.get("mdd_1y", 0)), 4)
+            row["relative_strength"] = round(_num(s.get("relative_strength_6m", 0)), 4)
+            row["capacity_score"] = round(_num(s.get("capacity_score", 0)), 4)
+            row["diversification_score"] = round(_num(s.get("diversification_score", 0)), 4)
+            row["diversification_penalty"] = round(_num(s.get("diversification_penalty", 0)), 4)
+            row["residual_strength"] = round(_num(s.get("residual_strength", 0)), 4)
         etfs.append(row)
     etfs.sort(key=lambda x: x["weight"], reverse=True)
 
     details = {}
     for k, v in regime.details.items():
         try:
-            details[k] = round(float(v), 4) if v is not None else None
+            details[k] = round(_num(v), 4) if v is not None else None
         except (TypeError, ValueError):
             details[k] = str(v)
 
@@ -153,14 +233,14 @@ def _format_regime_result(result: dict) -> dict:
                     "ticker": o.ticker,
                     "side": o.side,
                     "qty": o.qty,
-                    "est_notional": round(o.est_notional, 2),
+                    "est_notional": round(_num(o.est_notional), 2),
                 }
                 for o in trade_plan.orders
             ],
             "skipped": trade_plan.skipped,
             "warnings": trade_plan.warnings,
-            "portfolio_value": round(trade_plan.portfolio_value, 2),
-            "cash_available": round(trade_plan.cash_available, 2),
+            "portfolio_value": round(_num(trade_plan.portfolio_value), 2),
+            "cash_available": round(_num(trade_plan.cash_available), 2),
             "review": trade_review.checks if trade_review is not None else [],
         }
 
@@ -176,7 +256,7 @@ def _format_regime_result(result: dict) -> dict:
 
     sleeve_mix: dict[str, float] = {}
     for ticker in weights.index:
-        w = float(weights.get(ticker, 0.0))
+        w = _num(weights.get(ticker, 0.0))
         if w <= 0:
             continue
         sleeve = selected_sleeves.get(ticker, "core")
@@ -188,16 +268,16 @@ def _format_regime_result(result: dict) -> dict:
         selected_scores = scores.loc[[ticker for ticker in weights.index if ticker in scores.index]].copy()
         if not selected_scores.empty:
             score_diagnostics = {
-                "avg_relative_strength": round(float(selected_scores.get("relative_strength_6m", pd.Series(dtype=float)).mean()), 4) if "relative_strength_6m" in selected_scores.columns else 0.0,
-                "avg_capacity_score": round(float(selected_scores.get("capacity_score", pd.Series(dtype=float)).mean()), 4) if "capacity_score" in selected_scores.columns else 0.0,
-                "avg_diversification_score": round(float(selected_scores.get("diversification_score", pd.Series(dtype=float)).mean()), 4) if "diversification_score" in selected_scores.columns else 0.0,
-                "avg_diversification_penalty": round(float(selected_scores.get("diversification_penalty", pd.Series(dtype=float)).mean()), 4) if "diversification_penalty" in selected_scores.columns else 0.0,
-                "avg_residual_strength": round(float(selected_scores.get("residual_strength", pd.Series(dtype=float)).mean()), 4) if "residual_strength" in selected_scores.columns else 0.0,
+                "avg_relative_strength": round(_num(selected_scores.get("relative_strength_6m", pd.Series(dtype=float)).mean()), 4) if "relative_strength_6m" in selected_scores.columns else 0.0,
+                "avg_capacity_score": round(_num(selected_scores.get("capacity_score", pd.Series(dtype=float)).mean()), 4) if "capacity_score" in selected_scores.columns else 0.0,
+                "avg_diversification_score": round(_num(selected_scores.get("diversification_score", pd.Series(dtype=float)).mean()), 4) if "diversification_score" in selected_scores.columns else 0.0,
+                "avg_diversification_penalty": round(_num(selected_scores.get("diversification_penalty", pd.Series(dtype=float)).mean()), 4) if "diversification_penalty" in selected_scores.columns else 0.0,
+                "avg_residual_strength": round(_num(selected_scores.get("residual_strength", pd.Series(dtype=float)).mean()), 4) if "residual_strength" in selected_scores.columns else 0.0,
             }
 
     return {
         "state": regime.state,
-        "risk_score": round(regime.risk_score, 4),
+        "risk_score": round(_num(regime.risk_score), 4),
         "details": details,
         "etfs": etfs,
         "score_diagnostics": score_diagnostics,
@@ -223,6 +303,20 @@ def _format_regime_result(result: dict) -> dict:
 
 _latest: dict | None = None
 _backtest_latest: dict | None = None
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return value
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 def _status_warnings() -> dict[str, Any]:
@@ -286,9 +380,9 @@ async def dashboard(request: Request):
     ack_rows = _read_operator_ack()
     runtime_rows = _read_runtime_events()
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
-            "request": request,
             "latest": _latest,
             "reports": reports[:20],
             "audit_rows": audit_rows,
@@ -304,8 +398,26 @@ async def api_run():
     try:
         cfg = _load_cfg()
         result = run_once(cfg, do_trade=False)
-        _latest = _format_regime_result(result)
-        return {"ok": True, "data": _latest}
+        _latest = _json_safe(_format_regime_result(result))
+        try:
+            etf_lines = []
+            for etf in (_latest.get('etfs') or [])[:10]:
+                name = etf.get('name') or _lookup_ticker_name(etf.get('ticker'))
+                etf_lines.append(f"- {name} ({etf.get('ticker')}): {etf.get('weight', 0):.1f}%")
+            msg_lines = [
+                "[Druck ETF] Run Report 완료",
+                f"상태: {_latest.get('state')}",
+                f"리스크 점수: {_latest.get('risk_score')}",
+                f"리포트: {_latest.get('report_path')}",
+            ]
+            if etf_lines:
+                msg_lines.append("")
+                msg_lines.append("Selected ETFs")
+                msg_lines.extend(etf_lines)
+            send_telegram(_load_cfg(), "\n".join(msg_lines))
+        except Exception:
+            pass
+        return {"ok": True, "data": _latest, "debug": {"top_etf_names": [{"ticker": row.get("ticker"), "name": row.get("name")} for row in (_latest.get("etfs") or [])[:10]], "ticker_name_cache_size": len(_load_ticker_names())}}
     except Exception as exc:
         return JSONResponse(
             status_code=500,
@@ -319,12 +431,12 @@ async def api_backtest():
     try:
         cfg = _load_cfg()
         result = run_backtest(cfg)
-        _backtest_latest = {
+        _backtest_latest = _json_safe({
             "summary": result.summary,
             "rows": result.rebalance_log.to_dict(orient="records"),
             "scenario_summary": result.scenario_summary.to_dict(orient="records") if result.scenario_summary is not None else [],
             "analytics": result.analytics or {},
-        }
+        })
         return {"ok": True, "data": _backtest_latest}
     except Exception as exc:
         return JSONResponse(
@@ -398,9 +510,9 @@ async def api_ack_create(payload: dict):
 async def report_page(request: Request, filename: str):
     content = _read_report(filename)
     return templates.TemplateResponse(
+        request,
         "report.html",
         {
-            "request": request,
             "filename": filename,
             "content": content,
         },
@@ -410,9 +522,9 @@ async def report_page(request: Request, filename: str):
 @app.get("/history", response_class=HTMLResponse)
 async def history_page(request: Request):
     return templates.TemplateResponse(
+        request,
         "history.html",
         {
-            "request": request,
             "reports": _list_reports(),
         },
     )

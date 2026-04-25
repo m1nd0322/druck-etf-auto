@@ -215,7 +215,12 @@
       <tbody>
         {% for etf in latest.etfs %}
         <tr>
-          <td class="ticker">{{ etf.ticker }}</td>
+          <td class="ticker">
+            <div>{{ etf.get('name', etf.ticker) }}</div>
+            {% if etf.get('name') and etf.get('name') != etf.ticker %}
+            <div class="muted">{{ etf.ticker }}</div>
+            {% endif %}
+          </td>
           <td>{{ etf.get('sleeve', 'core') }}</td>
           <td>
             <div class="weight-bar" style="--w:{{ etf.weight }}%">{{ "%.1f"|format(etf.weight) }}%</div>
