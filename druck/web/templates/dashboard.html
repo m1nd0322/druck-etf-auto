@@ -19,6 +19,8 @@
   </div>
 
   <div id="error-box" class="alert alert-error" style="display:none"></div>
+  <div id="debug-box" class="alert alert-info" style="display:none; white-space: pre-wrap;"></div>
+  <script id="initial-latest-data" type="application/json">{{ latest|tojson if latest else 'null' }}</script>
 
   {% if latest %}
   <div id="result-section">
@@ -343,6 +345,67 @@ function renderScenarioRows(rows) {
   `).join('');
 }
 
+function escHtml(value) {
+  return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function renderLatestResult(latest) {
+  if (!latest) return '<div class="empty-state"><p>No report generated yet.</p></div>';
+  const details = Object.entries(latest.details || {})
+    .filter(([key]) => key !== 'risk_score' && key !== 'vix_spike_halt')
+    .map(([key, val]) => {
+      if (val === null || val === undefined) {
+        return `<div class="macro-card"><div class="macro-label">${escHtml(key)}</div><div class="macro-value"><span class="muted">N/A</span></div></div>`;
+      }
+      const barClass = val >= 0.55 ? 'bar-green' : (val <= 0.45 ? 'bar-red' : 'bar-yellow');
+      return `<div class="macro-card"><div class="macro-label">${escHtml(key)}</div><div class="macro-value"><div class="bar-bg"><div class="bar-fill ${barClass}" style="width:${Math.round(val * 100)}%"></div></div><span>${formatBacktestNumber(val, 2)}</span></div></div>`;
+    }).join('');
+  const etfRows = (latest.etfs || []).map((etf) => {
+    const name = etf.name || etf.ticker;
+    const sub = etf.name && etf.name !== etf.ticker ? `<div class="muted">${escHtml(etf.ticker)}</div>` : '';
+    const momentumClass = (etf.momentum || 0) >= 0 ? 'positive' : 'negative';
+    const mddClass = (etf.mdd || 0) < -0.15 ? 'negative' : '';
+    return `<tr>
+      <td class="ticker"><div>${escHtml(name)}</div>${sub}</td>
+      <td>${escHtml(etf.sleeve || 'core')}</td>
+      <td><div class="weight-bar" style="--w:${etf.weight}%">${formatBacktestNumber(etf.weight, 1)}%</div></td>
+      <td>${formatBacktestNumber(etf.score, 4)}</td>
+      <td class="${momentumClass}">${formatBacktestPercent((etf.momentum || 0), 2)}</td>
+      <td>${formatBacktestNumber(etf.trend, 2)}</td>
+      <td class="hide-mobile">${formatBacktestNumber(etf.relative_strength, 4)}</td>
+      <td class="hide-mobile">${formatBacktestNumber(etf.capacity_score, 4)}</td>
+      <td class="hide-mobile">${formatBacktestNumber(etf.diversification_score, 4)}</td>
+      <td class="hide-mobile">${formatBacktestNumber(etf.diversification_penalty, 4)}</td>
+      <td class="hide-mobile">${formatBacktestNumber(etf.residual_strength, 4)}</td>
+      <td class="hide-mobile">${formatBacktestPercent((etf.vol || 0), 1)}</td>
+      <td class="hide-mobile ${mddClass}">${formatBacktestPercent((etf.mdd || 0), 1)}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <section class="section">
+      <div class="regime-banner regime-${String(latest.state || '').toLowerCase()}">
+        <div class="regime-state">${escHtml(latest.state || '')}</div>
+        <div class="regime-score">Risk Score: ${escHtml(latest.risk_score)}</div>
+        <div class="regime-time">${escHtml(latest.generated_at || '')}</div>
+      </div>
+    </section>
+    <section class="section">
+      <h2>Macro Components</h2>
+      <div class="macro-grid">${details}</div>
+    </section>
+    <section class="section">
+      <h2>Selected ETFs</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Ticker</th><th>Sleeve</th><th>Weight %</th><th>Score</th><th>Momentum</th><th>Trend</th><th class="hide-mobile">Rel Str</th><th class="hide-mobile">Capacity</th><th class="hide-mobile">Div Score</th><th class="hide-mobile">Div Penalty</th><th class="hide-mobile">Residual</th><th class="hide-mobile">Vol</th><th class="hide-mobile">MDD</th></tr>
+          </thead>
+          <tbody>${etfRows}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
 async function runReport() {
   const btn = document.getElementById('btn-run');
   const btnText = document.getElementById('btn-text');
@@ -361,8 +424,15 @@ async function runReport() {
     if (!body.ok) {
       throw new Error(body.error || 'Unknown error');
     }
-    // Reload page to show updated result
-    window.location.reload();
+    const debugBox = document.getElementById('debug-box');
+    if (debugBox && body.debug) {
+      debugBox.style.display = 'block';
+      debugBox.textContent = JSON.stringify(body.debug, null, 2);
+    }
+    if (resultSection && body.data) {
+      resultSection.classList.remove('empty-state');
+      resultSection.innerHTML = renderLatestResult(body.data);
+    }
   } catch (err) {
     errorBox.textContent = err.message;
     errorBox.style.display = 'block';

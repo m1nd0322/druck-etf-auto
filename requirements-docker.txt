@@ -9,3 +9,6 @@ apscheduler
 fastapi
 uvicorn[standard]
 jinja2
+tabulate
+pyarrow
+duckdb

@@ -6,7 +6,9 @@ services:
     volumes:
       - ./output:/app/output
       - ./.cache:/app/.cache
+      - ./data:/app/data:ro
       - ./config.yaml:/app/config.yaml:ro
+      - ./config.local.yaml:/app/config.local.yaml:ro
     env_file:
       - path: .env
         required: false

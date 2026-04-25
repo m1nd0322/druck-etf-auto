@@ -129,17 +129,41 @@ python run_report.py
 
 ## 3. 대시보드 열기
 
+### 로컬 Python 실행
+
 ```bash
 . .venv/bin/activate
 python run_web.py
 ```
+
+### Docker Compose 실행
+
+```bash
+docker compose up -d --build web
+```
+
+Docker 대시보드는 아래 로컬 마운트를 전제로 합니다.
+- `./config.yaml:/app/config.yaml:ro`
+- `./config.local.yaml:/app/config.local.yaml:ro`
+- `./data:/app/data:ro`
+- `./output:/app/output`
+- `./.cache:/app/.cache`
+
+이유:
+- `config.local.yaml`이 있어야 web 컨테이너가 로컬 전용 Telegram 설정을 읽을 수 있습니다
+- `data/market_data/listings/*.parquet`가 있어야 `494310.KS` 같은 티커를 읽기 쉬운 ETF 이름으로 바꿔 표시할 수 있습니다
+
+또한 web 이미지에는 `requirements-docker.txt` 기준으로 아래 의존성이 필요합니다.
+- `tabulate`
+- `pyarrow`
+- `duckdb`
 
 그 다음 브라우저에서 로컬 dashboard를 엽니다.
 
 처음 볼 항목:
 - 최신 regime 상태
 - risk score
-- 선택된 ETF
+- 선택된 ETF, 가능한 경우 이름 우선 + ticker 보조 표시
 - order plan preview
 - warnings
 - runtime events

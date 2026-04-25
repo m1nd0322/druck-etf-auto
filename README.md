@@ -130,17 +130,41 @@ Expected outputs:
 
 ## 3. Open the dashboard
 
+### Local Python run
+
 ```bash
 . .venv/bin/activate
 python run_web.py
 ```
+
+### Docker Compose run
+
+```bash
+docker compose up -d --build web
+```
+
+The Docker dashboard expects these local mounts:
+- `./config.yaml:/app/config.yaml:ro`
+- `./config.local.yaml:/app/config.local.yaml:ro`
+- `./data:/app/data:ro`
+- `./output:/app/output`
+- `./.cache:/app/.cache`
+
+Why they matter:
+- `config.local.yaml` lets the web container read local-only settings such as Telegram bot delivery targets without baking secrets into the image
+- `data/market_data/listings/*.parquet` lets the dashboard convert tickers like `494310.KS` into readable ETF names
+
+The web image also needs dashboard/runtime dependencies from `requirements-docker.txt`, including:
+- `tabulate`
+- `pyarrow`
+- `duckdb`
 
 Then open the local dashboard in your browser.
 
 What to look at first:
 - latest regime state
 - risk score
-- selected ETFs
+- selected ETFs, now shown as name-first with ticker as a secondary label when market-data listings are available
 - order plan preview
 - warnings
 - runtime events
