@@ -146,6 +146,28 @@ def test_run_backtest_returns_expected_shape(monkeypatch):
     assert len(result.scenario_summary) >= 3
 
 
+def test_run_backtest_applies_rebalance_threshold_before_turnover(monkeypatch):
+    cfg = _base_cfg()
+    cfg["rebalance"]["min_trade_weight_diff"] = 0.20
+    idx = pd.date_range("2024-01-01", periods=420, freq="B")
+    px = pd.DataFrame({
+        "SPY": pd.Series([100 + i * 0.2 for i in range(420)], index=idx),
+        "SHY": pd.Series([100 + i * 0.01 for i in range(420)], index=idx),
+        "UUP": pd.Series([100 - i * 0.02 for i in range(420)], index=idx),
+        "HYG": pd.Series([100 + i * 0.1 for i in range(420)], index=idx),
+        "IEF": pd.Series([100 + i * 0.03 for i in range(420)], index=idx),
+        "TLT": pd.Series([100 + i * 0.02 for i in range(420)], index=idx),
+        "^VIX": pd.Series([15 + (i % 3) * 0.1 for i in range(420)], index=idx),
+    })
+
+    monkeypatch.setattr("druck.backtest.make_universe", lambda cfg: type("U", (), {"kr": [], "us": cfg["universe"]["us"]["tickers"]})())
+    monkeypatch.setattr("druck.backtest.fetch_prices", lambda tickers, start, end, prefer='auto', cache_dir=None, use_cache=True: px[tickers])
+
+    result = run_backtest(cfg)
+    assert result.summary["avg_turnover"] >= 0.0
+    assert not result.rebalance_log.empty
+
+
 def test_run_backtest_counts_halts(monkeypatch):
     cfg = _base_cfg()
     cfg["strategy_halt"] = {
