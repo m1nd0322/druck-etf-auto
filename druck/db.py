@@ -4,6 +4,81 @@ from datetime import datetime
 from typing import Any
 
 
+RUNTIME_EVENTS_COLUMNS = [
+    "id",
+    "timestamp",
+    "category",
+    "message",
+    "detail",
+    "payload",
+    "status",
+    "resolution_note",
+]
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    c = conn.cursor()
+    rows = c.execute(f"PRAGMA table_info({table})").fetchall()
+    return [str(row[1]) for row in rows]
+
+
+def _ensure_runtime_events_schema(conn: sqlite3.Connection):
+    c = conn.cursor()
+    c.execute(
+        """
+    CREATE TABLE IF NOT EXISTS runtime_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT,
+        category TEXT,
+        message TEXT,
+        detail TEXT,
+        payload TEXT,
+        status TEXT,
+        resolution_note TEXT
+    )
+    """
+    )
+    columns = _table_columns(conn, "runtime_events")
+    if columns == RUNTIME_EVENTS_COLUMNS:
+        conn.commit()
+        return
+
+    # Legacy table without id/status/resolution_note support.
+    if columns and columns == ["timestamp", "category", "message", "detail", "payload"]:
+        c.execute("ALTER TABLE runtime_events RENAME TO runtime_events_legacy")
+        c.execute(
+            """
+        CREATE TABLE runtime_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            category TEXT,
+            message TEXT,
+            detail TEXT,
+            payload TEXT,
+            status TEXT,
+            resolution_note TEXT
+        )
+        """
+        )
+        c.execute(
+            """
+        INSERT INTO runtime_events (timestamp, category, message, detail, payload, status, resolution_note)
+        SELECT timestamp, category, message, detail, payload, 'open', ''
+        FROM runtime_events_legacy
+        """
+        )
+        c.execute("DROP TABLE runtime_events_legacy")
+        conn.commit()
+        return
+
+    missing = set(RUNTIME_EVENTS_COLUMNS) - set(columns)
+    if missing:
+        raise sqlite3.OperationalError(
+            f"unsupported runtime_events schema: columns={columns}, missing={sorted(missing)}"
+        )
+    conn.commit()
+
+
 def init_db(path: str = "trade_log.db") -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     c = conn.cursor()
@@ -41,20 +116,7 @@ def init_db(path: str = "trade_log.db") -> sqlite3.Connection:
     )
     """
     )
-    c.execute(
-        """
-    CREATE TABLE IF NOT EXISTS runtime_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT,
-        category TEXT,
-        message TEXT,
-        detail TEXT,
-        payload TEXT,
-        status TEXT,
-        resolution_note TEXT
-    )
-    """
-    )
+    _ensure_runtime_events_schema(conn)
     conn.commit()
     return conn
 
