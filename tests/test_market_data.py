@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from druck.market_data import ensure_market_data_layout, write_parquet, write_timeseries_parquet
+from druck.market_data import chunked, ensure_market_data_layout, merge_timeseries, write_parquet, write_timeseries_parquet
 
 
 def test_ensure_market_data_layout_creates_expected_dirs(tmp_path):
@@ -11,6 +11,7 @@ def test_ensure_market_data_layout_creates_expected_dirs(tmp_path):
     assert layout.prices_root.exists()
     assert layout.indexes_root.exists()
     assert layout.metadata_root.exists()
+    assert layout.runs_root.exists()
 
 
 def test_write_parquet_writes_flat_frame(tmp_path):
@@ -30,3 +31,18 @@ def test_write_timeseries_parquet_resets_index(tmp_path):
     assert 'date' in loaded.columns
     assert 'AAA' in loaded.columns
     assert len(loaded) == 2
+
+
+def test_chunked_splits_items():
+    assert chunked([1, 2, 3, 4, 5], 2) == [[1, 2], [3, 4], [5]]
+
+
+def test_merge_timeseries_combines_existing_and_new(tmp_path):
+    path = tmp_path / 'prices.parquet'
+    old = pd.DataFrame({'AAA': [1.0, 2.0]}, index=pd.to_datetime(['2026-01-01', '2026-01-02']))
+    write_timeseries_parquet(old, path)
+    new = pd.DataFrame({'BBB': [3.0, 4.0]}, index=pd.to_datetime(['2026-01-01', '2026-01-02']))
+    merged = merge_timeseries(path, new)
+    assert 'AAA' in merged.columns
+    assert 'BBB' in merged.columns
+    assert len(merged) == 2
