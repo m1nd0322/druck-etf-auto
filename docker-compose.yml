@@ -7,6 +7,7 @@ services:
       - ./output:/app/output
       - ./.cache:/app/.cache
       - ./data:/app/data:ro
+      - ./trade_log.db:/app/trade_log.db
       - ./config.yaml:/app/config.yaml:ro
       - ./config.local.yaml:/app/config.local.yaml:ro
     env_file:
