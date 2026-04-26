@@ -1,0 +1,340 @@
+backtest:
+  adv_window_days: 20
+  benchmark_ticker: SPY
+  capacity_safety_factor: 0.25
+  drop_incomplete_assets: true
+  enforce_delist_exit: true
+  liquidity_vol_multiplier_bps: 2.0
+  market_impact_bps_per_turnover: 5.0
+  max_participation_rate: 0.1
+  min_history_days: 252
+  rebalance_frequency: M
+  scenarios:
+    enabled: true
+    presets:
+    - benchmark_shock: 0.0
+      name: return_shock_and_vol_up
+      note_template: Review drawdown-sensitive positions and confirm defensive posture.
+      operator_action: reduce risk and review exposures
+      return_shock: -0.05
+      review_required: true
+      severity: high
+      tags:
+      - stress
+      - drawdown
+      - volatility
+      vol_multiplier: 1.5
+    - benchmark_shock: -0.04
+      name: benchmark_gap_down
+      note_template: Check benchmark-relative weakness and decide whether to de-risk
+        or hold.
+      operator_action: compare active risk versus benchmark and review hedge stance
+      return_shock: -0.02
+      review_required: true
+      severity: high
+      tags:
+      - stress
+      - benchmark
+      - gap
+      vol_multiplier: 1.2
+    - benchmark_shock: 0.0
+      name: volatility_crush
+      note_template: Confirm whether lower-volatility assumptions still match current
+        market structure.
+      operator_action: monitor regime shift assumptions
+      return_shock: 0.0
+      review_required: false
+      severity: medium
+      tags:
+      - comparison
+      - volatility
+      vol_multiplier: 0.7
+    stress_return_shock: -0.05
+    vol_multiplier: 1.5
+  slippage_bps: 3.0
+  starting_capital: 1.0
+  strict_point_in_time: true
+  transaction_cost_bps: 1.5
+  universe_timeline_path: ''
+  volume_data_path: ''
+  walkforward:
+    enabled: true
+    step_days: 42
+    test_days: 42
+    train_days: 252
+data:
+  cache_csv: true
+  cache_dir: .cache
+  lookback_years: 3
+  price_provider: auto
+kiwoom:
+  account_no: ''
+  market_order: true
+  slippage_limit_bps: 30
+  split_n: 3
+macro_filter:
+  components:
+    credit_weight: 0.2
+    rates_weight: 0.15
+    spy_trend_weight: 0.3
+    usd_mom_weight: 0.15
+    vix_weight: 0.2
+  enabled: true
+  rates_overlay:
+    down_threshold: -0.02
+    up_threshold: 0.02
+  thresholds:
+    risk_off_score_max: 0.45
+    risk_on_score_min: 0.55
+mode:
+  dry_run: true
+  enable_kiwoom: false
+notifier:
+  telegram:
+    bot_token_env: TELEGRAM_BOT_TOKEN
+    chat_id_env: TELEGRAM_CHAT_ID
+    enabled: false
+rebalance:
+  commission_bps: 1.5
+  min_trade_weight_diff: 0.01
+  round_shares: true
+risk_cut:
+  action:
+    cash_kr: 130730.KS
+    cash_us: TLT
+    cut_to_cash: true
+  enabled: true
+  rules:
+    below_200sma_cut: true
+    hard_stop_cut: -0.18
+    trailing_dd_cut: -0.12
+schedule:
+  market_data_collection:
+    enabled: true
+    kr_daily:
+      command: /home/node/.openclaw/workspace/tmp/druck-etf-auto/automation/market-data/run_kr_collect.sh
+      hour: 6
+      minute: 0
+    us_daily:
+      command: /home/node/.openclaw/workspace/tmp/druck-etf-auto/automation/market-data/run_us_collect.sh
+      hour: 17
+      minute: 0
+  report_weekly:
+    day_of_week: sat
+    hour: 9
+    minute: 5
+  risk_check_daily:
+    hour: 16
+    minute: 5
+  timezone: Asia/Seoul
+selection:
+  benchmark_relative_filter:
+    apply_to_sleeves:
+    - factor
+    - sector
+    - country
+    enabled: true
+    min_relative_strength_6m: -0.02
+    mode: penalty
+    penalty: 0.25
+  correlation_diversification:
+    enabled: true
+    lookback: 63
+    min_correlation: 0.6
+    penalty: 0.12
+    top_k: 3
+  max_weight: 0.25
+  regime_factor_bias:
+    NEUTRAL:
+      QUAL,USMV: 0.1
+    RISK_OFF:
+      USMV,QUAL: 0.2
+      VLUE: 0.05
+    RISK_ON:
+      MTUM,QUAL: 0.2
+      XLK,SMH,XLY: 0.1
+  regime_factor_map:
+    NEUTRAL:
+      bonus: 0.1
+      min_count: 1
+      overweight:
+      - QUAL
+      - VLUE
+      penalty: 0.05
+      rates_overlay:
+        falling:
+          bonus: 0.04
+          overweight:
+          - QUAL
+          penalty: 0.0
+          underweight: []
+        rising:
+          bonus: 0.04
+          overweight:
+          - VLUE
+          penalty: 0.03
+          underweight:
+          - QUAL
+      relative_strength_gate:
+        enabled: true
+        min_relative_strength_6m: -0.015
+        mode: penalty
+        penalty: 0.06
+      underweight:
+      - SIZE
+    RISK_OFF:
+      bonus: 0.2
+      min_count: 1
+      overweight:
+      - USMV
+      - QUAL
+      penalty: 0.1
+      rates_overlay:
+        falling:
+          bonus: 0.03
+          overweight:
+          - QUAL
+          penalty: 0.0
+          underweight: []
+        rising:
+          bonus: 0.05
+          overweight:
+          - USMV
+          penalty: 0.03
+          underweight:
+          - MTUM
+      relative_strength_gate:
+        enabled: true
+        min_relative_strength_6m: -0.02
+        mode: exclude
+        penalty: 0.0
+      underweight:
+      - MTUM
+      - SIZE
+    RISK_ON:
+      bonus: 0.18
+      min_count: 1
+      overweight:
+      - MTUM
+      - QUAL
+      penalty: 0.08
+      rates_overlay:
+        falling:
+          bonus: 0.06
+          overweight:
+          - MTUM
+          - QUAL
+          penalty: 0.02
+          underweight:
+          - VLUE
+        rising:
+          bonus: 0.04
+          overweight:
+          - VLUE
+          penalty: 0.05
+          underweight:
+          - MTUM
+      relative_strength_gate:
+        enabled: true
+        min_relative_strength_6m: -0.01
+        mode: penalty
+        penalty: 0.1
+      underweight:
+      - USMV
+    enabled: true
+  regime_sleeve_rotation:
+    NEUTRAL:
+      preferred_sleeves:
+      - core
+      - factor
+      score_tilt:
+        core: 0.05
+        factor: 0.08
+      sleeve_budget:
+        core: 0.45
+        country: 0.15
+        factor: 0.3
+        sector: 0.2
+      top_n: 3
+    RISK_OFF:
+      preferred_sleeves:
+      - core
+      - country
+      score_tilt:
+        core: 0.1
+        country: 0.12
+      sleeve_budget:
+        core: 0.6
+        country: 0.25
+        factor: 0.15
+        sector: 0.1
+      top_n: 2
+    RISK_ON:
+      preferred_sleeves:
+      - factor
+      - sector
+      score_tilt:
+        factor: 0.18
+        sector: 0.12
+      sleeve_budget:
+        core: 0.35
+        country: 0.2
+        factor: 0.4
+        sector: 0.35
+      top_n: 3
+    enabled: true
+  residual_strength_anchors:
+    anchor_tickers:
+    - SPY
+    - TLT
+    - UUP
+    enabled: true
+    lookback: 126
+  score_weights:
+    capacity_awareness: 0.08
+    dd_penalty: 0.1
+    downside_efficiency: 0.12
+    momentum: 0.3
+    persistence: 0.12
+    recovery: 0.12
+    relative_strength: 0.16
+    residual_strength: 0.1
+    trend: 0.18
+    vol_penalty: 0.1
+  sleeve_budget:
+    core: 0.5
+    country: 0.25
+    factor: 0.25
+    sector: 0.35
+  top_n_risk_off: 2
+  top_n_risk_on: 3
+strategy_halt:
+  enabled: true
+  max_cut_asset_ratio: 0.8
+  max_negative_momentum_assets: 3
+  min_risk_score: 0.2
+  performance:
+    benchmark_relative_return: -0.05
+    benchmark_ticker: SPY
+    enabled: true
+    max_average_momentum: -0.02
+    min_average_score: 0.0
+    recent_total_return: -0.03
+universe:
+  kr:
+    auto_generate: true
+    blacklist_tickers: []
+    include_inverse: false
+    include_leveraged: false
+    whitelist_tickers: []
+  us:
+    auto_generate: false
+    country_tickers: []
+    factor_tickers: []
+    sector_tickers: []
+    tickers:
+    - SPY
+    - QQQ
+    - TLT
+    - GLD
+    - MTUM

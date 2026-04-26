@@ -249,7 +249,7 @@ def _select_weights(cfg: dict, px_window: pd.DataFrame) -> tuple[str, float, pd.
     sleeve_factor = set(cfg.get("universe", {}).get("us", {}).get("factor_tickers", []))
     factor_selected = [ticker for ticker in selected.index if ticker in sleeve_factor]
     sleeve_map = _combined_sleeve_map(cfg, selected.index)
-    weights = allocate_weights(selected, float(cfg["selection"]["max_weight"]), sleeve_map=sleeve_map, sleeve_budget=rotation.get("sleeve_budget"))
+    weights = allocate_weights(selected, float(cfg["selection"]["max_weight"]), sleeve_map=sleeve_map, sleeve_budget=rotation.get("sleeve_budget"), shaping_cfg=cfg.get("selection", {}).get("weight_shaping", {}))
 
     strategy_family = str(cfg.get("selection", {}).get("strategy_family", "overlay") or "overlay").strip().lower()
     overlay_cfg = cfg.get("selection", {}).get("benchmark_overlay", {}) or {}
@@ -435,15 +435,25 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
 
         prev_weights = current_weights.copy()
         all_names = sorted(set(prev_weights.index) | set(target_weights.index))
+        rebalance_threshold = float(cfg.get("rebalance", {}).get("min_trade_weight_diff", 0.0) or 0.0)
+        applied_weights = target_weights.copy()
         turnover = 0.0
         if all_names:
             prev = prev_weights.reindex(all_names).fillna(0.0)
             new = target_weights.reindex(all_names).fillna(0.0)
+            delta = new - prev
+            if rebalance_threshold > 0:
+                filtered = new.copy()
+                filtered.loc[delta.abs() < rebalance_threshold] = prev.loc[delta.abs() < rebalance_threshold]
+                if float(filtered.sum()) > 0:
+                    filtered = filtered / float(filtered.sum())
+                applied_weights = filtered[filtered > 0].copy()
+                new = applied_weights.reindex(all_names).fillna(0.0)
             turnover = float((new - prev).abs().sum())
 
         total_cost, base_cost, slippage_cost, impact_cost, liquidity_penalty, adv_20d, participation_rate, capacity = _compute_execution_cost(equity, turnover, selected, bt_cfg, volume_data, dt)
         equity -= total_cost
-        current_weights = target_weights.copy()
+        current_weights = applied_weights.copy()
 
         next_dt = rebal_dates[i + 1] if i + 1 < len(rebal_dates) else prices.index[-1]
         segment = prices.loc[dt:next_dt]

@@ -181,7 +181,7 @@ def run_once(cfg: dict, do_trade: bool=False, broker=None):
         selected = rotated_scores.head(rotation['top_n']).copy()
 
     selected_sleeve_map = build_sleeve_map(selected.index, sleeve_cfg)
-    w = allocate_weights(selected, float(cfg['selection']['max_weight']), sleeve_map=selected_sleeve_map, sleeve_budget=rotation.get('sleeve_budget'))
+    w = allocate_weights(selected, float(cfg['selection']['max_weight']), sleeve_map=selected_sleeve_map, sleeve_budget=rotation.get('sleeve_budget'), shaping_cfg=cfg.get('selection', {}).get('weight_shaping', {}))
 
     strategy_family = str(cfg.get('selection', {}).get('strategy_family', 'overlay') or 'overlay').strip().lower()
     overlay_cfg = cfg.get('selection', {}).get('benchmark_overlay', {}) or {}

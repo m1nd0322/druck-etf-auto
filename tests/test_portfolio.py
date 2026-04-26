@@ -13,6 +13,15 @@ def test_allocate_weights_normalizes_and_caps():
     assert all(w <= 0.6 for w in weights)
 
 
+def test_allocate_weights_supports_inverse_vol_shaping():
+    selected = pd.DataFrame({"vol": [0.1, 0.2]}, index=["A", "B"])
+    base = allocate_weights(selected, max_weight=1.0)
+    shaped = allocate_weights(selected, max_weight=1.0, shaping_cfg={"inverse_vol_exponent": 0.5})
+    assert math.isclose(shaped.sum(), 1.0, rel_tol=1e-9)
+    assert shaped["A"] < base["A"]
+    assert shaped["B"] > base["B"]
+
+
 def test_apply_risk_cuts_moves_weight_to_cash():
     idx = pd.date_range("2024-01-01", periods=260, freq="D")
     falling = pd.Series([200 - i * 0.5 for i in range(260)], index=idx)

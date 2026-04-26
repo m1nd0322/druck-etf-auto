@@ -347,14 +347,22 @@ def apply_sleeve_budget(weights: pd.Series, sleeve_map: dict[str, str] | None, s
     return result
 
 
-def allocate_weights(selected: pd.DataFrame, max_weight: float, sleeve_map: dict[str, str] | None = None, sleeve_budget: dict[str, float] | None = None) -> pd.Series:
+def allocate_weights(selected: pd.DataFrame, max_weight: float, sleeve_map: dict[str, str] | None = None, sleeve_budget: dict[str, float] | None = None, shaping_cfg: dict | None = None) -> pd.Series:
+    shaping_cfg = shaping_cfg or {}
     vol = selected['vol'].replace(0, np.nan)
     inv = (1.0/vol).replace([np.inf,-np.inf], np.nan).dropna()
-    w = inv/inv.sum()
+    if inv.empty:
+        return pd.Series(dtype=float)
+    exponent = float(shaping_cfg.get('inverse_vol_exponent', 1.0) or 1.0)
+    exponent = min(max(exponent, 0.0), 1.0)
+    shaped = inv.pow(exponent)
+    w = shaped / shaped.sum()
     w = w.clip(upper=float(max_weight))
     if w.sum()>0:
         w=w/w.sum()
     w = apply_sleeve_budget(w, sleeve_map, sleeve_budget)
+    if w.sum() > 0:
+        w = w / w.sum()
     return w
 
 def apply_risk_cuts(prices: pd.DataFrame, target_weights: pd.Series, risk_cfg: dict, cash_ticker: str) -> Tuple[pd.Series, pd.DataFrame]:
