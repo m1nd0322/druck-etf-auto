@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 
 from druck.data import fetch_prices, get_date_range
-from druck.market_data import ensure_market_data_layout, safe_listing, write_parquet, write_timeseries_parquet
+from druck.market_data import (
+    chunked,
+    ensure_market_data_layout,
+    merge_timeseries,
+    safe_listing,
+    write_parquet,
+    write_timeseries_parquet,
+)
 
 
 def _normalize_symbol_frame(df: pd.DataFrame) -> pd.DataFrame:
@@ -24,12 +32,107 @@ def _listing_fdr(code: str) -> pd.DataFrame:
     return _normalize_symbol_frame(fdr.StockListing(code))
 
 
-def _fetch_and_store_prices(tickers: list[str], start: str, end: str, path: Path, prefer: str) -> dict:
-    px = fetch_prices(tickers, start, end, prefer=prefer, cache_dir='.cache', use_cache=True)
-    if px.empty:
-        return {"path": str(path), "rows": 0, "columns": 0}
-    write_timeseries_parquet(px, path)
-    return {"path": str(path), "rows": int(len(px)), "columns": int(len(px.columns))}
+def _extract_tickers(df: pd.DataFrame, suffix_ks: bool = False) -> list[str]:
+    if df.empty:
+        return []
+    code_col = next((c for c in ['Symbol', 'Code', '종목코드', 'code'] if c in df.columns), None)
+    if not code_col:
+        return []
+    vals = [str(v).strip() for v in df[code_col].dropna().tolist()]
+    vals = [v.zfill(6) if suffix_ks and v.isdigit() else v for v in vals]
+    vals = [f'{v}.KS' if suffix_ks and not v.endswith('.KS') else v for v in vals]
+    return list(dict.fromkeys([v for v in vals if v]))
+
+
+def _collect_price_group(
+    name: str,
+    tickers: list[str],
+    start: str,
+    end: str,
+    path: Path,
+    prefer: str,
+    chunk_size: int,
+    runs_root: Path,
+) -> dict:
+    run_ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    run_dir = runs_root / run_ts
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    collected_frames: list[pd.DataFrame] = []
+    found: set[str] = set()
+    chunk_logs: list[dict] = []
+    missing: list[str] = []
+    warnings: list[dict] = []
+
+    for idx, group in enumerate(chunked(tickers, chunk_size), start=1):
+        px = fetch_prices(group, start, end, prefer=prefer, cache_dir='.cache', use_cache=True)
+        hit_cols = list(px.columns) if not px.empty else []
+        found.update(hit_cols)
+        missed = [t for t in group if t not in hit_cols]
+        missing.extend(missed)
+        warning_summary = getattr(px, 'attrs', {}).get('provider_warning_summary', {}) if px is not None else {}
+        if warning_summary:
+            warnings.append({'chunk': idx, **warning_summary})
+        if not px.empty:
+            collected_frames.append(px)
+        chunk_logs.append({
+            'chunk': idx,
+            'requested': len(group),
+            'returned_columns': len(hit_cols),
+            'missing_count': len(missed),
+            'missing_tickers': missed,
+        })
+
+    combined = pd.DataFrame()
+    for frame in collected_frames:
+        combined = combined.combine_first(frame) if not combined.empty else frame
+    combined = combined.sort_index() if not combined.empty else combined
+
+    if not combined.empty:
+        merged = merge_timeseries(path, combined)
+        write_timeseries_parquet(merged, path)
+    else:
+        merged = pd.DataFrame()
+
+    found_list = [t for t in tickers if t in found]
+    missing_list = [t for t in tickers if t not in found]
+
+    write_parquet(pd.DataFrame({'ticker': found_list}), run_dir / f'{name}_found_tickers.parquet')
+    write_parquet(pd.DataFrame({'ticker': missing_list}), run_dir / f'{name}_missing_tickers.parquet')
+    write_parquet(pd.DataFrame(chunk_logs), run_dir / f'{name}_chunk_log.parquet')
+    warning_summary = {
+        'chunks_with_warnings': len(warnings),
+        'issue_count': int(sum(int(w.get('issue_count', 0)) for w in warnings)),
+        'counts': {},
+        'messages': [],
+        'tickers': {},
+    }
+    for warning in warnings:
+        for category, count in (warning.get('counts') or {}).items():
+            warning_summary['counts'][category] = warning_summary['counts'].get(category, 0) + int(count)
+        for message in warning.get('messages') or []:
+            if message not in warning_summary['messages']:
+                warning_summary['messages'].append(message)
+        for category, names in (warning.get('tickers') or {}).items():
+            bucket = warning_summary['tickers'].setdefault(category, [])
+            for name in names or []:
+                if name not in bucket:
+                    bucket.append(name)
+    if warnings:
+        write_parquet(pd.DataFrame(warnings), run_dir / f'{name}_provider_warnings.parquet')
+
+    return {
+        'path': str(path),
+        'rows': int(len(merged)) if not merged.empty else 0,
+        'columns': int(len(merged.columns)) if not merged.empty else 0,
+        'requested_tickers': int(len(tickers)),
+        'found_tickers': int(len(found_list)),
+        'missing_tickers': int(len(missing_list)),
+        'chunk_size': int(chunk_size),
+        'missing_ticker_examples': missing_list[:10],
+        'warning_summary': warning_summary,
+        'run_dir': str(run_dir),
+    }
 
 
 def main() -> int:
@@ -38,6 +141,9 @@ def main() -> int:
     parser.add_argument('--lookback-years', type=int, default=3)
     parser.add_argument('--prices-limit', type=int, default=50, help='smoke-run ticker cap per group, 0 means no cap')
     parser.add_argument('--full', action='store_true', help='collect full price groups without cap')
+    parser.add_argument('--kr-chunk-size', type=int, default=1)
+    parser.add_argument('--us-chunk-size', type=int, default=50)
+    parser.add_argument('--index-chunk-size', type=int, default=10)
     args = parser.parse_args()
 
     layout = ensure_market_data_layout(args.root)
@@ -62,34 +168,23 @@ def main() -> int:
         listing_frames[key] = df
         if not df.empty:
             write_parquet(df, out_path)
-        listing_summary[key] = {"path": str(out_path), "rows": int(len(df)), "columns": int(len(df.columns)) if not df.empty else 0}
-
-    def extract_tickers(df: pd.DataFrame, suffix_ks: bool = False) -> list[str]:
-        if df.empty:
-            return []
-        code_col = next((c for c in ['Symbol', 'Code', '종목코드', 'code'] if c in df.columns), None)
-        if not code_col:
-            return []
-        vals = [str(v).strip() for v in df[code_col].dropna().tolist()]
-        vals = [v.zfill(6) if suffix_ks and v.isdigit() else v for v in vals]
-        vals = [f'{v}.KS' if suffix_ks and not v.endswith('.KS') else v for v in vals]
-        return list(dict.fromkeys([v for v in vals if v]))
+        listing_summary[key] = {'path': str(out_path), 'rows': int(len(df)), 'columns': int(len(df.columns)) if not df.empty else 0}
 
     def maybe_cap(items: list[str]) -> list[str]:
         if args.full or args.prices_limit <= 0:
             return items
         return items[: args.prices_limit]
 
-    kr_stock_tickers = maybe_cap(extract_tickers(listing_frames['krx_kospi'], suffix_ks=True) + extract_tickers(listing_frames['krx_kosdaq'], suffix_ks=True))
-    kr_etf_tickers = maybe_cap(extract_tickers(listing_frames['kr_etf'], suffix_ks=True))
-    us_stock_tickers = maybe_cap(extract_tickers(listing_frames['us_nasdaq']))
-    us_etf_tickers = maybe_cap(extract_tickers(listing_frames['us_etf']))
+    kr_stock_tickers = maybe_cap(_extract_tickers(listing_frames['krx_kospi'], suffix_ks=True) + _extract_tickers(listing_frames['krx_kosdaq'], suffix_ks=True))
+    kr_etf_tickers = maybe_cap(_extract_tickers(listing_frames['kr_etf'], suffix_ks=True))
+    us_stock_tickers = maybe_cap(_extract_tickers(listing_frames['us_nasdaq']))
+    us_etf_tickers = maybe_cap(_extract_tickers(listing_frames['us_etf']))
 
     price_summary = {
-        'kr_stocks': _fetch_and_store_prices(kr_stock_tickers, start, end, layout.prices_root / 'kr_stocks.parquet', prefer='fdr'),
-        'kr_etfs': _fetch_and_store_prices(kr_etf_tickers, start, end, layout.prices_root / 'kr_etfs.parquet', prefer='fdr'),
-        'us_stocks': _fetch_and_store_prices(us_stock_tickers, start, end, layout.prices_root / 'us_stocks.parquet', prefer='yf'),
-        'us_etfs': _fetch_and_store_prices(us_etf_tickers, start, end, layout.prices_root / 'us_etfs.parquet', prefer='yf'),
+        'kr_stocks': _collect_price_group('kr_stocks', kr_stock_tickers, start, end, layout.prices_root / 'kr_stocks.parquet', prefer='fdr', chunk_size=args.kr_chunk_size, runs_root=layout.runs_root),
+        'kr_etfs': _collect_price_group('kr_etfs', kr_etf_tickers, start, end, layout.prices_root / 'kr_etfs.parquet', prefer='fdr', chunk_size=args.kr_chunk_size, runs_root=layout.runs_root),
+        'us_stocks': _collect_price_group('us_stocks', us_stock_tickers, start, end, layout.prices_root / 'us_stocks.parquet', prefer='yf', chunk_size=args.us_chunk_size, runs_root=layout.runs_root),
+        'us_etfs': _collect_price_group('us_etfs', us_etf_tickers, start, end, layout.prices_root / 'us_etfs.parquet', prefer='yf', chunk_size=args.us_chunk_size, runs_root=layout.runs_root),
     }
 
     index_groups = {
@@ -97,7 +192,7 @@ def main() -> int:
         'us_indexes': ['^GSPC', '^IXIC', '^DJI', '^RUT', '^VIX'],
     }
     index_summary = {
-        key: _fetch_and_store_prices(maybe_cap(tickers), start, end, layout.indexes_root / f'{key}.parquet', prefer='auto')
+        key: _collect_price_group(key, maybe_cap(tickers), start, end, layout.indexes_root / f'{key}.parquet', prefer='auto', chunk_size=args.index_chunk_size, runs_root=layout.runs_root)
         for key, tickers in index_groups.items()
     }
 
@@ -105,6 +200,9 @@ def main() -> int:
         'lookback_years': args.lookback_years,
         'full': bool(args.full),
         'prices_limit': int(args.prices_limit),
+        'kr_chunk_size': int(args.kr_chunk_size),
+        'us_chunk_size': int(args.us_chunk_size),
+        'index_chunk_size': int(args.index_chunk_size),
         'listings': listing_summary,
         'prices': price_summary,
         'indexes': index_summary,
