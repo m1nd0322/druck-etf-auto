@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from ..backtest import run_backtest
 from ..config import load_config
-from ..db import fetch_operator_ack, fetch_runtime_events, fetch_trade_audit, init_db, log_operator_ack, resolve_runtime_event
+from ..db import fetch_operator_ack, fetch_order_operations, fetch_runtime_events, fetch_trade_audit, init_db, log_operator_ack, resolve_runtime_event
 from ..engine import run_once
 from ..notifier import send_telegram
 
@@ -145,6 +145,18 @@ def _read_trade_audit(limit: int = 50) -> list[dict[str, Any]]:
         return []
     try:
         rows = fetch_trade_audit(conn)
+        return rows[:limit]
+    finally:
+        conn.close()
+
+
+
+def _read_order_operations(limit: int = 50) -> list[dict[str, Any]]:
+    conn = _db_conn()
+    if conn is None:
+        return []
+    try:
+        rows = fetch_order_operations(conn, limit=limit)
         return rows[:limit]
     finally:
         conn.close()
@@ -377,6 +389,7 @@ def _status_warnings() -> dict[str, Any]:
 async def dashboard(request: Request):
     reports = _list_reports()
     audit_rows = _read_trade_audit()
+    order_rows = _read_order_operations()
     ack_rows = _read_operator_ack()
     runtime_rows = _read_runtime_events()
     return templates.TemplateResponse(
@@ -386,6 +399,7 @@ async def dashboard(request: Request):
             "latest": _latest,
             "reports": reports[:20],
             "audit_rows": audit_rows,
+            "order_rows": order_rows,
             "ack_rows": ack_rows,
             "runtime_rows": runtime_rows,
         },
@@ -461,6 +475,11 @@ async def api_report_detail(filename: str):
 @app.get("/api/audit", response_class=JSONResponse)
 async def api_audit():
     return {"rows": _read_trade_audit(limit=200)}
+
+
+@app.get("/api/orders", response_class=JSONResponse)
+async def api_orders():
+    return {"rows": _read_order_operations(limit=200)}
 
 
 @app.get("/api/ack", response_class=JSONResponse)

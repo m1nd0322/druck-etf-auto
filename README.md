@@ -147,6 +147,7 @@ The Docker dashboard expects these local mounts:
 - `./config.yaml:/app/config.yaml:ro`
 - `./config.local.yaml:/app/config.local.yaml:ro`
 - `./data:/app/data:ro`
+- `./trade_log.db:/app/trade_log.db`
 - `./output:/app/output`
 - `./.cache:/app/.cache`
 
@@ -169,6 +170,7 @@ What to look at first:
 - warnings
 - runtime events
 - strategy halt status
+- recent order operations, including buy/sell submit attempts and supporting checks such as deposit, positions, fills, and unfilled queries
 - recent trade audit events
 - recent operator acknowledgements
 
