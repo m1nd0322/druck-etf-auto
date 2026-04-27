@@ -146,6 +146,7 @@ Docker 대시보드는 아래 로컬 마운트를 전제로 합니다.
 - `./config.yaml:/app/config.yaml:ro`
 - `./config.local.yaml:/app/config.local.yaml:ro`
 - `./data:/app/data:ro`
+- `./trade_log.db:/app/trade_log.db`
 - `./output:/app/output`
 - `./.cache:/app/.cache`
 
@@ -168,6 +169,7 @@ Docker 대시보드는 아래 로컬 마운트를 전제로 합니다.
 - warnings
 - runtime events
 - strategy halt 상태
+- 최근 order operation, 즉 매수/매도 제출 시도와 예수금/잔고/체결/미체결 조회 같은 관련 작업 이력
 - 최근 trade audit event
 - 최근 operator acknowledgement
 

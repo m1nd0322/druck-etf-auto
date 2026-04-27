@@ -1,6 +1,6 @@
 import sqlite3
 
-from druck.db import fetch_runtime_events, fetch_trade_audit, init_db, log_runtime_event, log_trade_audit, resolve_runtime_event
+from druck.db import fetch_order_operations, fetch_runtime_events, fetch_trade_audit, init_db, log_order_operation, log_runtime_event, log_trade_audit, resolve_runtime_event
 
 
 def test_trade_audit_roundtrip(tmp_path):
@@ -25,6 +25,30 @@ def test_runtime_event_roundtrip(tmp_path):
     rows = fetch_runtime_events(conn)
     assert rows[0]["status"] == "resolved"
     assert rows[0]["resolution_note"] == "checked"
+
+
+def test_log_and_fetch_order_operations(tmp_path):
+    db_path = tmp_path / "orders.db"
+    conn = init_db(str(db_path))
+    log_order_operation(
+        conn,
+        action_type="buy_submit",
+        ticker="069500.KS",
+        side="buy",
+        api_id="kt10000",
+        status_code=200,
+        return_code="0",
+        return_msg="ok",
+        request_summary='{"qty":1}',
+        response_summary='{"return_code":0}',
+        order_ref="ABC123",
+        success=True,
+    )
+    rows = fetch_order_operations(conn)
+    assert len(rows) == 1
+    assert rows[0]["action_type"] == "buy_submit"
+    assert rows[0]["ticker"] == "069500.KS"
+    assert rows[0]["success"] is True
 
 
 def test_init_db_migrates_legacy_runtime_events_schema(tmp_path):
