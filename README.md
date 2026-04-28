@@ -173,6 +173,7 @@ What to look at first:
 - recent order operations, including buy/sell submit attempts and supporting checks such as deposit, positions, fills, and unfilled queries
 - recent trade audit events
 - recent operator acknowledgements
+- scheduled account snapshot checks that send evening account summaries to Telegram
 
 ## 4. Run a backtest snapshot
 
@@ -185,6 +186,24 @@ Important note:
 - the backtest engine is now materially stronger than the original scaffold
 - it supports periodic rebalancing, turnover, transaction cost impact, slippage and market-impact cost modeling, benchmark comparison, point-in-time defensive handling, historical universe timeline hooks, volume-data hooks for ADV-style liquidity estimates, walk-forward evaluation, scenario summaries, and core analytics
 - it is still not a full multi-asset institutional research platform with corporate actions research controls, survivorship-bias-free vendor history, and exchange-microstructure-perfect execution modeling
+
+## Scheduled account snapshots
+
+A daily account snapshot script is available for broker-state monitoring.
+
+Script:
+- `scripts/send_kiwoom_account_snapshot.py`
+
+Current automation intent:
+- query mock-account deposit / orderable cash / positions
+- send a Telegram summary using local-only `config.local.yaml`
+- persist the supporting broker-side checks into `order_operations`
+
+Current schedule:
+- daily at `20:00 Asia/Seoul`
+- OpenClaw cron job name: `druck-etf-auto daily account snapshot`
+
+This is meant for operator visibility, not autonomous trading.
 
 ## Market data collection
 

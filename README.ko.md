@@ -172,6 +172,25 @@ Docker 대시보드는 아래 로컬 마운트를 전제로 합니다.
 - 최근 order operation, 즉 매수/매도 제출 시도와 예수금/잔고/체결/미체결 조회 같은 관련 작업 이력
 - 최근 trade audit event
 - 최근 operator acknowledgement
+- 매일 저녁 텔레그램으로 보내는 예약 계좌 스냅샷 조회 결과
+
+## 예약 계좌 스냅샷
+
+일일 계좌 상태 모니터링용 스크립트가 있습니다.
+
+스크립트:
+- `scripts/send_kiwoom_account_snapshot.py`
+
+현재 자동화 목적:
+- 모의계좌 예수금 / 주문가능금액 / 잔고 조회
+- 로컬 전용 `config.local.yaml` 기반 Telegram 전송
+- 관련 조회 작업을 `order_operations`에 저장
+
+현재 스케줄:
+- 매일 `20:00 Asia/Seoul`
+- OpenClaw cron job 이름: `druck-etf-auto daily account snapshot`
+
+이 자동화는 자율 매매가 아니라 운영 가시성 확보용입니다.
 
 ## 4. 백테스트 스냅샷 실행
 
