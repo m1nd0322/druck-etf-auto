@@ -266,7 +266,9 @@ def score_universe(prices: pd.DataFrame, sw: dict, regime_state: str | None = No
             'vol':rolling_vol(p,63),
             'mdd_1y':max_drawdown(p,252),
         })
-    df=pd.DataFrame(rows).set_index('ticker')
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows).set_index('ticker')
     if df.empty:
         return df
     df['mom_z']=zscore(df['momentum'])

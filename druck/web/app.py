@@ -452,6 +452,15 @@ async def api_backtest():
             "analytics": result.analytics or {},
         })
         return {"ok": True, "data": _backtest_latest}
+    except RuntimeError as exc:
+        message = str(exc)
+        user_message = message
+        if message == "Not enough history to score universe":
+            user_message = "백테스트 점수 계산에 필요한 충분한 가격 이력이 없습니다. 현재 유니버스/기간/데이터 상태를 확인해 주세요."
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": user_message, "raw_error": message},
+        )
     except Exception as exc:
         return JSONResponse(
             status_code=500,

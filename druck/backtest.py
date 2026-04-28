@@ -415,7 +415,8 @@ def _run_single_backtest(cfg: dict, bt_cfg: BacktestConfig, prices: pd.DataFrame
 
     freq = "ME" if bt_cfg.rebalance_frequency == "M" else bt_cfg.rebalance_frequency
     rebal_dates = prices.resample(freq).last().index
-    rebal_dates = [d for d in rebal_dates if d in prices.index and prices.index.get_loc(d) >= bt_cfg.min_history_days]
+    score_history_requirement = max(int(bt_cfg.min_history_days), 260)
+    rebal_dates = [d for d in rebal_dates if d in prices.index and prices.index.get_loc(d) >= score_history_requirement]
     if not rebal_dates:
         rebal_dates = [prices.index[-1]]
 
