@@ -81,7 +81,6 @@ def merge_timeseries(existing_path: Path, new_df: pd.DataFrame) -> pd.DataFrame:
     if existing_path.exists():
         old = pd.read_parquet(existing_path)
         old = _normalize_index(old)
-        merged = old.combine_first(merged)
         merged = merged.combine_first(old)
     merged = merged.sort_index()
     merged = merged.loc[:, ~merged.columns.duplicated()]

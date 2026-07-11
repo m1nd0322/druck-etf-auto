@@ -11,7 +11,7 @@ uvicorn[standard]
 jinja2
 tabulate
 pytest
-httpx
+httpx2
 pyarrow
 duckdb
 PyQt5; platform_system=="Windows"

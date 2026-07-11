@@ -6,7 +6,7 @@ from pathlib import Path
 import requests
 import yaml
 
-CONFIG = Path('/home/node/.openclaw/workspace/tmp/druck-etf-auto/config.local.yaml')
+CONFIG = Path(__file__).resolve().parents[1] / 'config.local.yaml'
 MOCK_BASE = 'https://mockapi.kiwoom.com'
 TRS = ['kt00001', 'kt00005', 'kt00017', 'kt00018']
 BODIES = [

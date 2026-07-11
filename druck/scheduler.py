@@ -1,13 +1,18 @@
 from __future__ import annotations
+
+import shlex
+import subprocess
+from pathlib import Path
+
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from .config import load_config
-import subprocess
-
 from .engine import run_once
 from .notifier import send_telegram
 from .runtime import RuntimeEvent, db_runtime_reporter, run_guarded
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _make_reporter(cfg: dict):
@@ -25,7 +30,10 @@ def _make_reporter(cfg: dict):
 
 
 def _run_market_data_command(command: str):
-    subprocess.run(command, shell=True, check=True)
+    args = shlex.split(command)
+    if not args:
+        raise ValueError("market data command must not be empty")
+    subprocess.run(args, check=True, cwd=PROJECT_ROOT)
 
 
 def start_scheduler():

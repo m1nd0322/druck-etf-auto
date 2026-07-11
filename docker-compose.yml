@@ -2,15 +2,17 @@ services:
   web:
     build: .
     ports:
-      - "${PORT:-8000}:8000"
+      - "127.0.0.1:${PORT:-8000}:8000"
     volumes:
       - ./output:/app/output
       - ./.cache:/app/.cache
       - ./data:/app/data:ro
-      - ./trade_log.db:/app/trade_log.db
+      - trade-state:/app/state
       - ./config.yaml:/app/config.yaml:ro
-      - ./config.local.yaml:/app/config.local.yaml:ro
     env_file:
       - path: .env
         required: false
     restart: unless-stopped
+
+volumes:
+  trade-state:

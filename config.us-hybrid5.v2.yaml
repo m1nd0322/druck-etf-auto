@@ -112,11 +112,11 @@ schedule:
   market_data_collection:
     enabled: true
     kr_daily:
-      command: /home/node/.openclaw/workspace/tmp/druck-etf-auto/automation/market-data/run_kr_collect.sh
+      command: automation/market-data/run_kr_collect.sh
       hour: 6
       minute: 0
     us_daily:
-      command: /home/node/.openclaw/workspace/tmp/druck-etf-auto/automation/market-data/run_us_collect.sh
+      command: automation/market-data/run_us_collect.sh
       hour: 17
       minute: 0
   report_weekly:

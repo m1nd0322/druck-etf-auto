@@ -143,17 +143,19 @@ python run_web.py
 docker compose up -d --build web
 ```
 
-The Docker dashboard expects these local mounts:
+The Docker dashboard uses these mounts:
 - `./config.yaml:/app/config.yaml:ro`
-- `./config.local.yaml:/app/config.local.yaml:ro`
 - `./data:/app/data:ro`
-- `./trade_log.db:/app/trade_log.db`
 - `./output:/app/output`
 - `./.cache:/app/.cache`
+- `trade-state:/app/state` (Docker named volume)
 
 Why they matter:
-- `config.local.yaml` lets the web container read local-only settings such as Telegram bot delivery targets without baking secrets into the image
+- the optional `.env` file supplies `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` without baking secrets into the image
 - `data/market_data/listings/*.parquet` lets the dashboard convert tickers like `494310.KS` into readable ETF names
+- the `trade-state` volume persists `trade_log.db` without relying on a host file that may not exist on a clean checkout
+
+Compose binds the dashboard to `127.0.0.1` by default. The default stack intentionally does not mount the optional `config.local.yaml`, because a missing short-syntax file mount is created as a directory by Docker. Add an explicit Compose override only when an existing local config file must be mounted.
 
 The web image also needs dashboard/runtime dependencies from `requirements-docker.txt`, including:
 - `tabulate`
@@ -230,6 +232,14 @@ Full run:
 . .venv/bin/activate
 python run_collect_market_data.py --lookback-years 3 --full
 ```
+
+Scheduled wrappers:
+- `automation/market-data/run_kr_collect.sh`
+- `automation/market-data/run_us_collect.sh`
+
+The wrappers resolve the repository root from their own location, use `.venv/bin/python` by default, and can be overridden with `DRUCK_PYTHON` and `DRUCK_LOG_DIR`. Scheduler commands are parsed as argument vectors and run from the repository root without a shell. Both wrappers currently invoke the full collector; their names identify the schedule window and log file, not a market-only filter.
+
+When new parquet observations overlap existing dates, non-null values from the newest collection take precedence while older values remain as fallbacks for gaps.
 
 Output root:
 - `data/market_data/listings/*.parquet`
@@ -394,6 +404,7 @@ The selection score is no longer just momentum plus trend. It now also includes:
 - `recovery` - how much an asset has recovered from prior drawdown
 - `downside_efficiency` - total return earned per unit of downside burden
 - `relative_strength` - how strongly an ETF outperformed the benchmark on a relative basis
+- `residual_strength` - annualized regression intercept alpha after controlling for the configured anchor returns
 
 The US ETF universe is also structured in sleeves:
 - core tickers
@@ -520,20 +531,30 @@ The dashboard is the recommended first interface for operators.
 ## 10. Testing and quality
 
 ```bash
-pytest -q
+.venv/bin/python -m pytest -q -W error
+.venv/bin/python -m compileall -q druck run_*.py scripts
+uvx --from ruff ruff check . --select E9,F63,F7,F82
+uvx bandit -q -ll -r druck run_*.py scripts
+docker compose config -q
 ```
+
+The `uvx` checks are optional local static/security checks. The test and compile commands use the project Python 3.11 virtual environment used by the container build.
 
 Coverage includes:
 - config validation
 - macro regime logic
 - portfolio scoring and cuts
+- annualized residual-alpha scoring, including constant-anchor behavior
+- market-data merge precedence for overlapping observations
 - notifier and scheduler behavior
+- shell-free scheduled command execution and checkout-independent automation paths
 - trade review and execution safety
 - partial fill and replan flow
 - operator acknowledgement flow
 - runtime event persistence and resolution
 - strategy halt behavior
 - dashboard API behavior
+- loopback web defaults, Compose mount safety, and persistent Docker trade logs
 
 ## 11. Shared data integration
 
@@ -549,6 +570,8 @@ Current integration behavior:
 - the current backtest is still minimal scaffolding
 - strategy halt logic is safety-oriented, not a complete portfolio risk research layer
 - Kiwoom live trading requires Windows-specific environment readiness
+- public deployments such as Render require an explicit authentication and secret-management policy; the local server and default Compose stack are loopback-only, but the application does not provide built-in public-access authentication
+- live market providers, Telegram delivery, and real broker orders require external credentials and are not exercised by the local test suite
 
 ## 13. Recommended reading order for deeper understanding
 

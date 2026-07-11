@@ -46,3 +46,16 @@ def test_merge_timeseries_combines_existing_and_new(tmp_path):
     assert 'AAA' in merged.columns
     assert 'BBB' in merged.columns
     assert len(merged) == 2
+
+
+def test_merge_timeseries_prefers_new_values_and_keeps_old_fallbacks(tmp_path):
+    path = tmp_path / 'prices.parquet'
+    dates = pd.to_datetime(['2026-01-01', '2026-01-02'])
+    old = pd.DataFrame({'AAA': [1.0, 2.0]}, index=dates)
+    write_timeseries_parquet(old, path)
+    new = pd.DataFrame({'AAA': [10.0, float('nan')]}, index=dates)
+
+    merged = merge_timeseries(path, new)
+
+    assert merged.loc[dates[0], 'AAA'] == 10.0
+    assert merged.loc[dates[1], 'AAA'] == 2.0

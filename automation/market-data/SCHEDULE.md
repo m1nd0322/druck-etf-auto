@@ -1,6 +1,6 @@
 # Market Data Collection Schedule
 
-OpenClaw scheduler configuration for daily market data collection.
+Daily market data collection configuration for the built-in scheduler and OpenClaw cron.
 
 ## Daily jobs
 
@@ -9,8 +9,8 @@ OpenClaw scheduler configuration for daily market data collection.
 
 ## Commands
 
-- `/home/node/.openclaw/workspace/tmp/druck-etf-auto/automation/market-data/run_kr_collect.sh`
-- `/home/node/.openclaw/workspace/tmp/druck-etf-auto/automation/market-data/run_us_collect.sh`
+- `automation/market-data/run_kr_collect.sh`
+- `automation/market-data/run_us_collect.sh`
 
 ## Config source
 
@@ -23,16 +23,18 @@ schedule:
     kr_daily:
       hour: 6
       minute: 0
-      command: "/home/node/.openclaw/workspace/tmp/druck-etf-auto/automation/market-data/run_kr_collect.sh"
+      command: "automation/market-data/run_kr_collect.sh"
     us_daily:
       hour: 17
       minute: 0
-      command: "/home/node/.openclaw/workspace/tmp/druck-etf-auto/automation/market-data/run_us_collect.sh"
+      command: "automation/market-data/run_us_collect.sh"
 ```
 
 ## Notes
 
 - The current active production schedule is attached through OpenClaw built-in cron, not system crontab.
+- The wrappers derive the project root from their own location, so the checkout can move without editing commands.
+- Set `DRUCK_PYTHON` to override the default `.venv/bin/python` interpreter and `DRUCK_LOG_DIR` to redirect wrapper logs.
 - Scheduler timezone is `Asia/Seoul`.
 - Cron delivery is set to `none` so Telegram `@heartbeat` delivery resolution failures do not mark otherwise-useful collection runs as delivery errors.
 - Logs are written by each shell wrapper into `automation/market-data/*.log`.
