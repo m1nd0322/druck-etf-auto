@@ -142,17 +142,19 @@ python run_web.py
 docker compose up -d --build web
 ```
 
-Docker 대시보드는 아래 로컬 마운트를 전제로 합니다.
+Docker 대시보드는 아래 마운트를 사용합니다.
 - `./config.yaml:/app/config.yaml:ro`
-- `./config.local.yaml:/app/config.local.yaml:ro`
 - `./data:/app/data:ro`
-- `./trade_log.db:/app/trade_log.db`
 - `./output:/app/output`
 - `./.cache:/app/.cache`
+- `trade-state:/app/state` (Docker named volume)
 
 이유:
-- `config.local.yaml`이 있어야 web 컨테이너가 로컬 전용 Telegram 설정을 읽을 수 있습니다
+- 선택적인 `.env` 파일에서 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`를 읽으므로 이미지에 secret을 넣지 않아도 됩니다
 - `data/market_data/listings/*.parquet`가 있어야 `494310.KS` 같은 티커를 읽기 쉬운 ETF 이름으로 바꿔 표시할 수 있습니다
+- `trade-state` 볼륨은 깨끗한 checkout에 host DB 파일이 없어도 `trade_log.db`를 영속 보관합니다
+
+Compose는 기본적으로 대시보드를 `127.0.0.1`에만 바인딩합니다. 기본 stack은 선택적인 `config.local.yaml`을 mount하지 않습니다. Docker short syntax는 파일이 없을 때 같은 이름의 디렉터리를 만들기 때문입니다. 실제 local config 파일을 컨테이너에 넣어야 할 때만 별도 Compose override에서 명시적으로 mount하세요.
 
 또한 web 이미지에는 `requirements-docker.txt` 기준으로 아래 의존성이 필요합니다.
 - `tabulate`
@@ -191,6 +193,16 @@ Docker 대시보드는 아래 로컬 마운트를 전제로 합니다.
 - OpenClaw cron job 이름: `druck-etf-auto daily account snapshot`
 
 이 자동화는 자율 매매가 아니라 운영 가시성 확보용입니다.
+
+## 시장 데이터 수집
+
+Parquet 기반 시장 데이터 수집기는 아래 스크립트로 예약 실행할 수 있습니다.
+- `automation/market-data/run_kr_collect.sh`
+- `automation/market-data/run_us_collect.sh`
+
+스크립트는 자신의 위치를 기준으로 저장소 루트를 찾고 기본적으로 `.venv/bin/python`을 사용합니다. 필요하면 `DRUCK_PYTHON`, `DRUCK_LOG_DIR`로 실행 환경과 로그 위치를 바꿀 수 있습니다. Scheduler는 명령을 shell 없이 인자 배열로 실행하며 작업 디렉터리를 저장소 루트로 고정합니다. 현재 두 wrapper 모두 전체 수집기를 실행하며, 파일 이름은 시장별 실행 시간과 로그를 구분하는 용도이지 시장 전용 필터를 뜻하지 않습니다.
+
+기존 Parquet와 날짜가 겹칠 때는 최신 수집의 non-null 값이 우선하고, 최신 데이터가 비어 있는 부분만 기존 값으로 보완합니다.
 
 ## 4. 백테스트 스냅샷 실행
 
@@ -346,20 +358,30 @@ python run_backtest.py
 ## 10. 테스트와 품질
 
 ```bash
-pytest -q
+.venv/bin/python -m pytest -q -W error
+.venv/bin/python -m compileall -q druck run_*.py scripts
+uvx --from ruff ruff check . --select E9,F63,F7,F82
+uvx bandit -q -ll -r druck run_*.py scripts
+docker compose config -q
 ```
+
+`uvx` 명령은 선택적인 로컬 정적·보안 검사입니다. 테스트와 compile 명령은 Docker 이미지와 같은 Python 3.11 프로젝트 가상환경을 기준으로 합니다.
 
 현재 커버 범위:
 - config validation
 - macro regime logic
 - portfolio scoring 및 cut
+- 상수 anchor 경계 사례를 포함한 연율화 residual alpha 계산
+- 날짜가 겹치는 market-data merge 우선순위
 - notifier / scheduler 동작
+- shell 없는 scheduler 명령 실행과 checkout 독립적인 자동화 경로
 - trade review 및 execution safety
 - partial fill 및 replan flow
 - operator acknowledgement flow
 - runtime event 저장 및 resolve
 - strategy halt 동작
 - dashboard API 동작
+- loopback web 기본값, Compose mount 안전성, Docker trade log 영속성
 
 ## 11. 공유 데이터 연동
 
@@ -375,6 +397,8 @@ pytest -q
 - 현재 backtest는 아직 최소 scaffold 수준입니다
 - strategy halt는 안전 중심 규칙이며, 완전한 전략 리스크 연구 레이어는 아닙니다
 - Kiwoom 실거래는 Windows 환경 준비가 필요합니다
+- Render 같은 공개 배포에는 별도의 인증 및 secret 관리 정책이 필요합니다. 로컬 서버와 기본 Compose는 loopback 전용이지만 애플리케이션 자체에는 공개 접근용 인증 기능이 없습니다
+- 실제 시세 제공자, Telegram 전송, 실거래 주문은 외부 자격증명이 필요하므로 로컬 테스트에서 실행하지 않습니다
 
 ## 13. 더 깊게 이해하려면 이 순서 추천
 

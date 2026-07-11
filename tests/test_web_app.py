@@ -100,6 +100,21 @@ def test_backtest_api_returns_scenarios_and_analytics(tmp_path, monkeypatch):
     assert body["data"]["analytics"]["strategy_comparison"]["robustness_summary"].startswith("enhanced wins")
 
 
+def test_backtest_api_does_not_expose_internal_traceback(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("druck.web.app._load_cfg", lambda: {"backtest": {}})
+
+    def fail_backtest(_cfg):
+        raise ValueError("/secret/internal/path")
+
+    monkeypatch.setattr("druck.web.app.run_backtest", fail_backtest)
+
+    resp = TestClient(app).post("/api/backtest")
+
+    assert resp.status_code == 500
+    assert resp.json() == {"ok": False, "error": "internal server error"}
+
+
 def test_format_regime_result_includes_rotation_policy_and_sleeve_mix():
     import types
     import pandas as pd

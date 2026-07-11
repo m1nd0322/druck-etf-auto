@@ -1,6 +1,7 @@
 import math
 
 import pandas as pd
+import pytest
 
 from druck.features import pct_change_n, rolling_vol, sma, trailing_drawdown, momentum_score, persistence_score, recovery_score, downside_efficiency, relative_strength_vs_benchmark, capacity_penalty_score, residual_strength_vs_anchors
 
@@ -60,11 +61,50 @@ def test_capacity_penalty_score_prefers_smoother_series():
     assert capacity_penalty_score(smooth, 63) > capacity_penalty_score(jumpy, 63)
 
 
-def test_residual_strength_vs_anchors_positive_for_asset_with_extra_independent_alpha():
-    n = 220
-    spy = pd.Series([100 + i * 0.20 for i in range(n)])
-    tlt = pd.Series([100 + i * 0.05 + ((-1) ** i) * 0.05 for i in range(n)])
-    uup = pd.Series([100 + i * 0.01 for i in range(n)])
-    asset = pd.Series([100 + i * 0.26 + ((i % 7) * 0.02) for i in range(n)])
-    anchors = pd.DataFrame({"SPY": spy, "TLT": tlt, "UUP": uup})
-    assert residual_strength_vs_anchors(asset, anchors, 126) > 0
+def _prices_from_returns(returns: pd.Series) -> pd.Series:
+    return pd.Series([100.0, *(100.0 * (1.0 + returns).cumprod())])
+
+
+def test_residual_strength_vs_anchors_returns_annualized_regression_alpha():
+    anchor_returns = pd.DataFrame(
+        {
+            "SPY": pd.Series([(-1) ** i * 0.004 for i in range(130)]),
+            "TLT": pd.Series([((i % 5) - 2) * 0.001 for i in range(130)]),
+            "UUP": pd.Series([((i % 7) - 3) * 0.0005 for i in range(130)]),
+        }
+    )
+    anchors = anchor_returns.apply(_prices_from_returns)
+    asset_returns = 0.001 + 0.5 * anchor_returns["SPY"] - 0.2 * anchor_returns["TLT"]
+
+    result = residual_strength_vs_anchors(_prices_from_returns(asset_returns), anchors, 126)
+
+    assert result == pytest.approx(0.252, abs=1e-10)
+
+
+def test_residual_strength_vs_anchors_preserves_negative_alpha():
+    anchor_returns = pd.DataFrame(
+        {
+            "SPY": pd.Series([(-1) ** i * 0.004 for i in range(130)]),
+            "TLT": pd.Series([((i % 5) - 2) * 0.001 for i in range(130)]),
+        }
+    )
+    anchors = anchor_returns.apply(_prices_from_returns)
+    asset_returns = -0.0005 + 0.4 * anchor_returns["SPY"] + 0.1 * anchor_returns["TLT"]
+
+    result = residual_strength_vs_anchors(_prices_from_returns(asset_returns), anchors, 126)
+
+    assert result == pytest.approx(-0.126, abs=1e-10)
+
+
+def test_residual_strength_vs_anchors_annualizes_when_anchors_are_constant():
+    anchors = pd.DataFrame(
+        {
+            "SPY": _prices_from_returns(pd.Series([0.0] * 130)),
+            "TLT": _prices_from_returns(pd.Series([0.0] * 130)),
+        }
+    )
+    asset = _prices_from_returns(pd.Series([0.001] * 130))
+
+    result = residual_strength_vs_anchors(asset, anchors, 126)
+
+    assert result == pytest.approx(0.252, abs=1e-10)

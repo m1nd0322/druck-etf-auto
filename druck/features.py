@@ -132,13 +132,12 @@ def residual_strength_vs_anchors(prices: pd.Series, anchors: pd.DataFrame, lookb
         return float("nan")
     x = x.loc[:, x.std(ddof=0) > 1e-12]
     if x.empty:
-        return float(y.mean())
+        return float(y.mean() * 252)
     x_mat = np.column_stack([np.ones(len(x)), x.to_numpy()])
     y_vec = y.to_numpy()
     beta, *_ = np.linalg.lstsq(x_mat, y_vec, rcond=None)
-    fitted = x_mat @ beta
-    residual = y_vec - fitted
-    return float(np.mean(residual) * 252)
+    daily_alpha = beta[0]
+    return float(daily_alpha * 252)
 
 
 def zscore(s: pd.Series) -> pd.Series:

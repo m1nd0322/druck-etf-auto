@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import logging
 import math
 import sqlite3
-import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
@@ -20,6 +20,7 @@ from ..engine import run_once
 from ..notifier import send_telegram
 
 _HERE = Path(__file__).resolve().parent
+logger = logging.getLogger(__name__)
 
 
 def _root() -> Path:
@@ -432,10 +433,11 @@ async def api_run():
         except Exception:
             pass
         return {"ok": True, "data": _latest, "debug": {"top_etf_names": [{"ticker": row.get("ticker"), "name": row.get("name")} for row in (_latest.get("etfs") or [])[:10]], "ticker_name_cache_size": len(_load_ticker_names())}}
-    except Exception as exc:
+    except Exception:
+        logger.exception("report API failed")
         return JSONResponse(
             status_code=500,
-            content={"ok": False, "error": str(exc), "trace": traceback.format_exc()},
+            content={"ok": False, "error": "internal server error"},
         )
 
 
@@ -461,10 +463,11 @@ async def api_backtest():
             status_code=400,
             content={"ok": False, "error": user_message, "raw_error": message},
         )
-    except Exception as exc:
+    except Exception:
+        logger.exception("backtest API failed")
         return JSONResponse(
             status_code=500,
-            content={"ok": False, "error": str(exc), "trace": traceback.format_exc()},
+            content={"ok": False, "error": "internal server error"},
         )
 
 
